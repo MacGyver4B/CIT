@@ -1,0 +1,20 @@
+# Nobody every wants line ending conversions!
+
+# Explicitly declare text files you want to always be normalized
+# and converted to UNIX line endings on checkout.
+*.c             text eol=lf
+*.h             text eol=lf
+*.in            text eol=lf
+*.md            text eol=lf
+*.txt           text eol=lf
+*.yml           text eol=lf
+Makefile*       text eol=lf
+.gitattributes  text eol=lf
+.gitignore      text eol=lf
+
+# Declare files that will always have CRLF line endings on checkout.
+*.sln           text eol=crlf
+*.vcxproj*      text eol=crlf
+
+# All files should be UTF-8 encoded.
+*               working-tree-encoding=UTF-8

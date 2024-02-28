@@ -1,0 +1,35 @@
+# Backup files
+*~
+*.orig
+
+# Compiler output.
+*.o
+
+# Patches
+*.diff
+*.patch
+*.rej
+
+# Compiled applications
+/cc1541
+/cc1541_asan
+/cc1541.exe
+/test_cc1541
+/test_cc1541.exe
+
+# Source tarball
+cc1541-*.tar*
+cc1541-*.zip
+
+# Manpage
+/cc1541.1
+/cc1541.1.txt
+
+# MacOS metadata
+.DS_Store
+
+# VS Code settings
+/.vscode
+
+# local testing data
+/test

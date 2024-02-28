@@ -1,0 +1,1302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1.0, shrink-to-fit=no">
+<link href="assets/images/favicon.png" rel="icon" />
+<title>cc1541 Documentation</title>
+<meta name="description" content="cc1541 Documentation">
+<meta name="author" content="Claus">
+
+<!-- Stylesheet
+============================== -->
+<!-- Bootstrap -->
+<link rel="stylesheet" type="text/css" href="assets/vendor/bootstrap/css/bootstrap.min.css" />
+<!-- Font Awesome Icon -->
+<link rel="stylesheet" type="text/css" href="assets/vendor/font-awesome/css/all.min.css" />
+<!-- Magnific Popup -->
+<link rel="stylesheet" type="text/css" href="assets/vendor/magnific-popup/magnific-popup.min.css" />
+<!-- Highlight Syntax -->
+<link rel="stylesheet" type="text/css" href="assets/vendor/highlight.js/styles/github.css" />
+<!-- Custom Stylesheet -->
+<link rel="stylesheet" type="text/css" href="assets/css/stylesheet.css" />
+</head>
+
+<body class="box" data-spy="scroll" data-target=".idocs-navigation" data-offset="125">
+
+<!-- Preloader -->
+<div class="preloader">
+  <div class="lds-ellipsis">
+    <div></div>
+    <div></div>
+    <div></div>
+    <div></div>
+  </div>
+</div>
+<!-- Preloader End -->
+
+<!-- Document Wrapper
+=============================== -->
+<div id="main-wrapper">
+
+  <!-- Header
+  ============================ -->
+  <header id="header" class="sticky-top">
+    <!-- Navbar -->
+    <nav class="primary-menu navbar navbar-expand-lg navbar-dropdown-dark">
+      <div class="container-fluid">
+        <!-- Sidebar Toggler -->
+		<button id="sidebarCollapse" class="navbar-toggler d-block d-md-none" type="button"><span></span><span class="w-75"></span><span class="w-50"></span></button>
+
+		<!-- Logo -->
+        <a class="logo ml-md-3" href="index.html" title="cc1541"> <img src="assets/images/logo.png" alt="cc1541"/> </a>
+		<span class="text-2 ml-2">v4.2</span>
+        <!-- Logo End -->
+
+		<!-- Navbar Toggler -->
+		<button class="navbar-toggler ml-auto" type="button" data-toggle="collapse" data-target="#header-nav"><span></span><span></span><span></span></button>
+
+		<div id="header-nav" class="collapse navbar-collapse justify-content-end">
+          <ul class="navbar-nav">
+            <li class="dropdown"> <a class="dropdown-toggle" href="#">Support</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="mailto:claus@acoustic-velocity.com">Email</a></li>
+                <li><a class="dropdown-item" href="https://bitbucket.org/PTV_Claus/cc1541">Bitbucket</a></li>
+                <li><a class="dropdown-item" href="https://csdb.dk/release/index.php?id=230166">csdb</a></li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+    <!-- Navbar End -->
+  </header>
+  <!-- Header End -->
+
+  <!-- Content
+  ============================ -->
+  <div id="content" role="main">
+
+	<!-- Sidebar Navigation
+	============================ -->
+	<div class="idocs-navigation bg-light">
+      <ul class="nav flex-column ">
+        <li class="nav-item"><a class="nav-link active" href="#cc1541_introduction">Introduction</a></li>
+        <li class="nav-item"><a class="nav-link" href="#cc1541_usage">General Usage</a></li>
+        <li class="nav-item"><a class="nav-link" href="#cc1541_params">Command Line Switches</a>
+          <ul class="nav flex-column">
+            <li class="nav-item"><a class="nav-link" href="#cc1541_cat_disk">Disk Related</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_cat_file">File Related</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_cat_ts">Track/Sector Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_cat_fastload">Fastloader Specific</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_cat_misc">Miscellaneous</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_escape">PETSCII Escape</a></li>
+            <li class="nav-item"><a class="nav-link" href="#cc1541_index">Alphabetic Index</a></li>
+          </ul>
+        </li>
+        <li class="nav-item"><a class="nav-link" href="#cc1541_build">Building</a></li>
+        <li class="nav-item"><a class="nav-link" href="#cc1541_changelog">Changelog</a></li>
+        <li class="nav-item"><a class="nav-link" href="#cc1541_license">License</a></li>
+      </ul>
+    </div>
+
+    <!-- Docs Content
+	============================ -->
+    <div class="idocs-content">
+      <div class="container">
+
+        <!-- Introduction
+		============================ -->
+        <section id="cc1541_introduction">
+        <h1>cc1541 Documentation</h1>
+        <h2>Introduction</h2>
+        <p>cc1541 is a tool for creating Commodore floppy disk images in <a href="http://unusedino.de/ec64/technical/formats/d64.html">D64</a> (35 and 40 track), <a href="http://unusedino.de/ec64/technical/formats/d71.html">D71</a> or <a href="http://unusedino.de/ec64/technical/formats/d81.html">D81</a> format, providing a lot of control over the layout of the data on the disk. It also supports writing the file format for the <a href="https://csdb.dk/release/?id=214786">Transwarp loader</a> by Krill.</p>
+        <p><img class="img-fluid" src="assets/images/floppy.png" alt=""><br><em>Schematic of a 5,25&quot; floppy disk with the different speed zones: for simplification, the sectors are perfectly aligned here, which is usually not the case on real hardware because of the way the disk format routine works.</em></p>
+        <div class="col-lg-9">
+        <p><a class="popup-img" href="assets/images/floppy_real.png"><img class="img-fluid" src="assets/images/floppy_real.png" alt=""></a></p>
+        </div>
+        <p><em>A more realistic view of a 5,25&quot; floppy disk, with non-aligned tracks and slightly larger tail gaps at the end of a track.</em></p>
+        <p>cc1541 was initially written by JackAsser and has received many updates since then by Claus, Krill and Björn Esser. The program is provided under the terms of the MIT license. Please refer to section <a href="#cc1541_license">License</a> for its terms and conditions. The public source code repository can be found here: <a href="https://bitbucket.org/PTV_Claus/cc1541/src/master/">Bitbucket Repository</a></p>
+        <p class="alert alert-info">For bug reports or feature requests, please feel free to reach out via one of the options in the support menu.</p>
+        <p>This documentation was created using <a href="https://github.com/harnishdesign/iDocs">iDoc</a> by Harnish Design. Please find the iDoc license <a href="LICENSE">here</a>.</p>
+        <hr class="divider">
+        </section>
+
+        <!-- Usage
+		============================ -->
+        <section id="cc1541_usage">
+          <h2>General Usage</h2>
+          <p>cc1541 is a command line executable, making it easily automatable using shell scripts and Makefiles, e.g., in an automated build chain.</p>
+          <p>Open a shell (e.g., the Windows Command Prompt or the macOS or Linux Terminal), navigate to the folder where the cc1541 binary is (or make sure it is in the path), and type <code>cc1541</code> to display the command line help. The command line consists of "cc1541", followed by a series of command line switches with their respective arguments, and a disk image file as the last command line argument.</p>
+          <p>The output image file format is selected according to the file extension (.d64, .d71 or .d81; for unknown extensions, the <a href="http://unusedino.de/ec64/technical/formats/d64.html">D64</a> format is assumed.)</p>
+          <p>Typical usage examples are:</p>
+          <ul>
+          <li><code>cc1541 image.d64</code> lists the content of the disk image file "image.d64".</li>
+          <li><code>cc1541 <a href="#cc1541_f">-f</a> program <a href="#cc1541_w">-w</a> file.prg image.d64</code> adds the file "file.prg" to the disk image "image.d64" (or creates the image if it does not exist yet) using the name "program".</li>
+          <li><code>cc1541 <a href="#cc1541_f">-f</a> program1 <a href="#cc1541_w">-w</a> file1.prg <a href="#cc1541_f">-f</a> program2 <a href="#cc1541_w">-w</a> file2.prg image.d64</code> adds two files under the names "program1" and "program2".</li>
+          <li><code>cc1541 <a href="#cc1541_s">-s</a> 4 <a href="#cc1541_f">-f</a> program <a href="#cc1541_w">-w</a> file.prg image.d64</code> writes a file with a dedicated sector interleave for a fastloader (the best value depends on the used fastloader and its configuration).</li>
+          <li><code>cc1541 <a href="#cc1541_f">-f</a> game <a href="#cc1541_W">-W</a> game.prg <a href="#cc1541_f">-f</a> "transwarp" <a href="#cc1541_w">-w</a> "transwarp v0.86.prg" Transwarp-Game.d64</code> creates a Transwarp disk image with the required boot file, which can be found as part of the cc1541 distribution package.</li>
+          <li><code>cc1541 <a href="#cc1541_T">-T</a> DEL <a href="#cc1541_f">-f</a> ---------------- <a href="#cc1541_L">-L</a> image.d64</code> creates a DEL entry as a separator in the disk directory.</li>
+          </ul>
+        </section>
+
+		<hr class="divider">
+
+    <!-- Parameter Reference
+		============================ -->
+    <section id="cc1541_params">
+      <h2>Command Line Switches</h2>
+      <p>This section describes all command line switches and their parameters. A condensed version is printed when calling <code>cc1541 -h</code></p>
+    </section>
+
+    <!-- Categories
+		============================ -->
+    <section id="cc1541_cat_disk">
+      <h3>Disk Related</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Switch</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#cc1541_n">&#8209;n&nbsp;&lt;diskname&gt;</a></td>
+            <td>Set disk name</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_i">&#8209;i&nbsp;&lt;id&gt;</a></td>
+            <td>Set disk ID</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_4">&#8209;4</a></td>
+            <td>Write 40 track D64 in Speed DOS format</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_5">&#8209;5</a></td>
+            <td>Write 40 track D64 in Dolphin DOS format</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_d">&#8209;d&nbsp;&lt;dirtrack&gt;</a></td>
+            <td>Maintain a shadow directory</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_g">&#8209;g&nbsp;&lt;filename&gt;</a></td>
+            <td>Write an additional G64 output file</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_H">&#8209;H&nbsp;&lt;message&gt;</a></td>
+            <td>Write hidden BAM message</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_p">&#8209;p&nbsp;&lt;track&gt;,&lt;sector&gt;,&lt;offset&gt;,&lt;filename&gt;</a></td>
+            <td>Write binary patch to image</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_V">&#8209;V</a></td>
+            <td>Validate disk image to have CBM DOS format</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="cc1541_cat_file">
+      <h3>File Related</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Switch</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#cc1541_w">&#8209;w&nbsp;&lt;filename&gt;</a></td>
+            <td>Write local file to disk image</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_f">&#8209;f&nbsp;&lt;name&gt;</a></td>
+            <td>Directory name of next file to write</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_T">&#8209;T&nbsp;&lt;filetype&gt;</a></td>
+            <td>Filetype for next file</td>
+          </tr>
+          <tr>
+            <tr>
+              <td><a href="#cc1541_P">&#8209;P</a></td>
+              <td>Mark file as protected</td>
+            </tr>
+              <td><a href="#cc1541_O">&#8209;O</a></td>
+            <td>Mark file as open</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_B">&#8209;B&nbsp;&lt;numblocks&gt;</a></td>
+            <td>Use given value as file size in directory</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_L">&#8209;L</a></td>
+            <td>Create a directory entry without writing a file</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_l">&#8209;l&nbsp;&lt;filename&gt;</a></td>
+            <td>Second directory entry for a file</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_N">&#8209;N</a></td>
+            <td>Force creation of a new directory entry</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_o">&#8209;o</a></td>
+            <td>Disallow overwriting of files</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_X">&#8209;X&nbsp;&lt;filename&gt;</a></td>
+            <td>Extract file from disk image</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="cc1541_cat_ts">
+      <h3>Track/Sector Control</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Switch</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#cc1541_S">&#8209;S&nbsp;&lt;value&gt;</a></td>
+            <td>Default sector interleave</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_s">&#8209;s&nbsp;&lt;value&gt;</a></td>
+            <td>Sector interleave for next file</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_e">&#8209;e</a></td>
+            <td>Start next file on empty track</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_E">&#8209;E</a></td>
+            <td>Try to fit file on single track</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_r">&#8209;r&nbsp;&lt;track&gt;</a></td>
+            <td>Restrict file to given track or higher</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_b">&#8209;b&nbsp;&lt;sector&gt;</a></td>
+            <td>Set start sector for the next file</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_F">&#8209;F&nbsp;&lt;sector&gt;</a></td>
+            <td>First sector on new track</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_t">&#8209;t</a></td>
+            <td>Use directory track for files</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_u">&#8209;u&nbsp;&lt;value&gt;</a></td>
+            <td>Reserve number of directory blocks when using <a href="#cc1541_t">&#8209;t</a></td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_x">&#8209;x</a></td>
+            <td>Do not split files across directory track</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_c">&#8209;c</a></td>
+            <td>Write cluster optimized on D71 image</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="cc1541_cat_fastload">
+      <h3>Fastloader Specific</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Switch</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#cc1541_M">&#8209;M&nbsp;&lt;numchars&gt;</a></td>
+            <td>Number of filename characters to include in hash for <a href="https://csdb.dk/release/?id=226124">Krill's loader</a></td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_m">&#8209;m</a></td>
+            <td>Disable filename collision check for <a href="https://csdb.dk/release/?id=226124">Krill's loader</a></td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_W">&#8209;W&nbsp;&lt;filename&gt;</a></td>
+            <td>Write file in Transwarp format</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_A">&#8209;A&nbsp;&lt;value&gt;</a></td>
+            <td>Transwarp allocation strategy</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_K">&#8209;K&nbsp;&lt;key&gt;</a></td>
+            <td>Encryption key for Transwarp files</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="cc1541_cat_misc">
+      <h3>Miscellaneous</h3>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Switch</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><a href="#cc1541_h">&#8209;h</a></td>
+            <td>Print command line help</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_v">&#8209;v</a></td>
+            <td>Verbose output</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_q">&#8209;q</a></td>
+            <td>Quiet mode</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_U">&#8209;U&nbsp;&lt;mapping&gt;</a></td>
+            <td>Print PETSCII as Unicode</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_R">&#8209;R&nbsp;&lt;level&gt;</a></td>
+            <td>Restore deleted files</td>
+          </tr>
+          <tr>
+            <td><a href="#cc1541_a">&#8209;a</a></td>
+            <td>Print the command line options that create the same directory as in the given image</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Escape
+		============================ -->
+    <section id="cc1541_escape">
+      <h3>PETSCII Escape</h3>
+      <p>CBM DOS uses <a href="https://sta.c64.org/cbm64pet.html">PETSCII</a> character encoding, which is only partly compatible to the ASCII set of characters that today's OSs are based on. Some command line switches that have a string as argument can use an escape mechanism to specify arbitrary PETSCII characters. The format is #XX, with XX specifying the hexadecimal number of the PETSCII character. Note that because "#" now has a special meaning, "#23" must be used to specify an actual "#" as character (as $23 is the PETSCII code for #).</pre>
+      <p>In verbose mode (see <a href="#cc1541_v">-v</a>), the escaped ASCII translation of all filenames in the directory is printed.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -f "1000#5c quest" -w file.prg image.d64</pre>
+      <p>On a C64, the directory listing will look like this:</p>
+      <div class="col-lg-6">
+        <p><a class="popup-img" href="assets/images/escape.png"><img class="img-fluid border" src="assets/images/escape.png" alt=""></a></p>
+      </div>
+    </section>
+
+    <!-- Alphabetic index
+		============================ -->
+    <section id="cc1541_index">
+      <h3>Alphabetic Index</h3>
+    </section>
+
+    <!-- -4
+    ============================ -->
+    <section id="cc1541_4">
+      <h4>-4</h4>
+      <p>Use tracks 35-40 on a D64 image with Speed DOS BAM formatting. The additional block allocation table required for the tracks beyond 35 has an offset of $c0 on sector 0 of the directory track.</p>
+    </section>
+
+    <!-- -5
+    ============================ -->
+    <section id="cc1541_5">
+      <h4>-5</h4>
+      <p>Use tracks 35-40 on a D64 image with Dolphin DOS BAM formatting.  The additional block allocation table required for the tracks beyond 35 has an offset of $ac on sector 0 of the directory track.</p>
+    </section>
+
+    <!-- -a
+    ============================ -->
+    <section id="cc1541_a">
+      <h4>-a</h4>
+      <p>Print the command line options that would create the same directory as the one in the given image. This is handy for directory art import.</p>
+    </section>
+
+    <!-- -A
+    ============================ -->
+    <section id="cc1541_A">
+      <h4>-A &lt;value&gt;</h4>
+      <p>Select the allocation strategy for Transwarp files. Setting 0 means that cc1541 allocates the files in the order given on the command line. Setting 1 will try to save disk space by reordering the Transwarp files.</p>
+      <p></p>
+    </section>
+
+    <!-- -b
+    ============================ -->
+    <section id="cc1541_b">
+      <h4>-b &lt;sector&gt;</h4>
+      <p>Set the start sector for the next file. If the sector is already used on the start track, use the next higher free sector.</p>
+      <p>This switch is not applicable for D81 or Transwarp files.</p>
+    </section>
+
+    <!-- -B
+    ============================ -->
+    <section id="cc1541_B">
+      <h4>-B &lt;numblocks&gt;</h4>
+      <p>Write the given value as file size in blocks to the directory for the next file. This switch cannot be applied to Transwarp files because these rely on this information in the directory being correct.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -B <b>1000</b> <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+<b>1000</b>  "file.prg"         prg
+664 blocks free.</pre>
+      <p>Note how the number of free blocks printed at the bottom of the directory is still correct, as this is calculated from the block allocation table on the disk, and not from the number of blocks per directory entry.</p>
+    </section>
+
+    <!-- -c
+    ============================ -->
+    <section id="cc1541_c">
+      <h4>-c</h4>
+      <p>On <a href="http://unusedino.de/ec64/technical/formats/d71.html">D71</a> images, minimize track changes for the next file by writing cluster-optimized, i.e., alternating on both sides of the disk if possible.</p>
+    </section>
+
+    <!-- -d
+    ============================ -->
+    <section id="cc1541_d">
+      <h4>-d &lt;track&gt;</h4>
+      <p>Maintain a shadow directory. <a href="https://csdb.dk/release/?id=226124">Krill's loader</a> supports a directory which is not on the track, where CBM DOS expects it, but on a different one. This makes it invisible for CBM DOS and allows to freely manipulate the visible directory, e.g., for directory art. The value for this switch needs to be aligned with DIRTRACK in the loader configuration file and is recommended to be near the standard directory track (i.e., 17 or 19 for D64 images) to minimize seek times.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -d 17 <a href="#cc1541_f">-f</a> loader <a href="#cc1541_w">-w</a> loader.prg <a href="#cc1541_f">-f</a> data <a href="#cc1541_w">-w</a> data.prg image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+13   "loader"           prg
+13   "data"             prg
+636 blocks free.
+
+&gt; cc1541 <a href="#cc1541_T">-T</a> 0 <a href="#cc1541_f">-f</a> data <a href="#cc1541_L">-L</a> image.d64
+Adding 1 files to existing image image.d64
+1 out of 1 files exist and will be overwritten
+
+0 "cc1541          " 00 2a
+13   "loader"           prg
+649 blocks free.</pre>
+      <p>The first call sets up all required files in both the standard and the shadow directory. The second call then sets the file type of file "data" to 0, effectively deleting it from the standard directory. But the loader can still access it, as it is still part of the shadow directory. </p>
+    </section>
+
+    <!-- -e
+    ============================ -->
+    <section id="cc1541_e">
+      <h4>-e</h4>
+      <p>Start next file on an empty track. This can have a performance advantage, as it minimizes the track changes during loading the file. The start sector on the empty track is the current sector plus interleave, unless specified otherwise using <a href="#cc1541_b">-b</a>.</p>
+    </section>
+
+    <!-- -E
+    ============================ -->
+    <section id="cc1541_E">
+      <h4>-E</h4>
+      <p>Try to fit file on a single track. This is similar to <a href="#cc1541_e">-e</a>, but small files will happily share a track with other files, so this might save some disk space.  On the other hand, the interleave might not be ideal due to collisions with the used sectors, so read performance could be worse.</p>
+    </section>
+
+		<!-- -f
+		============================ -->
+    <section id="cc1541_f">
+      <h4>-f &lt;name&gt;</h4>
+      <p>This specifies the filename to be used on the disk image for the next written file. The name will be truncated to the maximum number of 16 characters.  </p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -f <b>"start"</b> <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   <b>"start"</b>            prg
+648 blocks free.
+      </pre>
+      <p>CBM DOS has a trick up its sleeve: the use of PETSCII character $a0 (SHIFT-SPACE) allows to append characters in the directory after the closing quote.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -f "start#a0,8,1" <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "start",8,1        prg
+648 blocks free.
+      </pre>
+    </section>
+
+    <!-- -F
+    ============================ -->
+    <section id="cc1541_F">
+      <h4>-F &lt;value&gt;</h4>
+      <p>This switch specifies the first sector a file should use on its first track and after every track change after that. If the specified sector is not free, the next free sector after that is used. The default setting for this switch is 0.</p>
+      <div class="col-lg-6">
+        <p><img class="img-fluid" src="assets/images/first_sector_new_track.png" alt=""></p>
+      </div>
+      <p><em>For this file with the three blocks A, B and C, it makes sense to use -F 8, so that block C has the same interleave of 10 sectors.</em></p>
+      <p>A negative value has a special meaning for this switch and can be used to specify a track skew: instead of a fixed value, the last written sector in the current track plus the current sector interleave (see <a href="#cc1541_s">-s</a> and <a href="#cc1541_S">-S</a>) minus the given value is used. This makes sense under the assumption that tracks are aligned with a fixed sector offset (the track skew), which is usually roughly the case for real hardware.</p>
+      <div class="col-lg-6">
+        <p><img class="img-fluid" src="assets/images/track_skew.png" alt=""></p>
+      </div>
+      <p><em>For a track skew of 6, using -F -6 will take care for the correct sector interleave automatically and place C on sector 1.</em></p>
+      <p>After each file, the value falls back to the default value of 0. This switch cannot be used for D81 disk images. </p>
+    </section>
+
+    <!-- -g
+    ============================ -->
+    <section id="cc1541_g">
+      <h4>-g &lt;filename&gt;</h4>
+      <p>Write an additional <a href="http://www.unusedino.de/ec64/technical/formats/g64.html">G64</a> output file with the given name, a raw GCR binary representation of the disk.</p>
+    </section>
+
+    <!-- -h
+    ============================ -->
+    <section id="cc1541_h">
+      <h4>-h</h4>
+      <p>Print the command line help.</p>
+    </section>
+
+    <!-- -H
+    ============================ -->
+    <section id="cc1541_H">
+      <h4>-H &lt;message&gt;</h4>
+      <p>This writes a hidden message into a normally unused area of the disk inside of the BAM sector. There is no common standard where BAM messages are placed exactly, but it seems that an offset of $ab is used most, and that is where cc1541 will put it or try to detect it. For any input image, cc1541 will try to detect if a message is hidden there and if so, print it.</p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -H <b>"my secret message to the world"</b> image.d64
+Adding 0 files to new image image.d64
+
+0 "cc1541          " 00 2a
+664 blocks free.
+
+BAM message: <b>"my secret message to the world"</b>
+        </pre>
+    </section>
+
+    <!-- -i
+    ============================ -->
+    <section id="cc1541_i">
+      <h4>-i &lt;id&gt;</h4>
+      <p>This sets the disk ID, which is displayed right of the disk name in the directory. The maximum length is 5 characters, any additional characters will be truncated. If not set, the default is "00 2a", as this is what CBM DOS will write per default.</p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -i <b>12345</b> image.d64
+Adding 0 files to new image image.d64
+
+0 "cc1541          " <b>12345</b>
+664 blocks free.
+      </pre>
+    </section>
+
+    <!-- -K
+    ============================ -->
+    <section id="cc1541_K">
+      <h4>-K &lt;key&gt;</h4>
+      <p>Set an encryption key for Transwarp files, a string of up to 29 characters. This key can be passed to the load command as a fourth parameter on the C64 when Transwarp is loaded:</p>
+      <div class="col-lg-6">
+        <p><img class="img-fluid" src="assets/images/encrypted.png" alt=""></p>
+      </div>
+      <p>A wrong key will result in a ?LOAD ERROR. Note that encrypted files are listed as USR files in the directory. The file size in the directory is also encrypted, so it will not reflect the actual number of blocks the file occupies.</p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -K "mykey" <a href="#cc1541_W">-W</a> file.prg <a href="#cc1541_w">-w</a> "transwarp 0.86.prg" image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+24   "file.prg"         usr
+32   "transwarp v0.86." prg
+626 blocks free.</pre>
+    </section>
+
+    <!-- -l
+    ============================ -->
+    <section id="cc1541_l">
+      <h4>-l &lt;filename&gt;</h4>
+      <p>This switch allows to create a second directory entry for a file that already exists on the disk or is given as part of the same command line. Wildcards "*" and "?" are supported for name matching, but need to be in quotes or escaped to avoid interpretation by the shell. It is required to set a separate filename in addition to this switch using <a href="#cc1541_f">-f</a>.</p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 <a href="#cc1541_f">-f</a> file <a href="#cc1541_w">-w</a> file.prg <a href="#cc1541_f">-f</a> duplicate -l file image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+13   "file"             prg
+13   "duplicate"        prg
+651 blocks free.
+      </pre>
+    </section>
+
+    <!-- -L
+    ============================ -->
+    <section id="cc1541_L">
+      <h4>-L</h4>
+      <p>This switch will create a directory entry without writing a file to the disk image. The start track and sector in the directory entry will both be 0. Track 0 is illegal (track counting on CBM DOS starts with 1), and trying to load such an entry on the C64 will fail with "?FILE NOT FOUND ERROR". The switch is intended to be used for directory art and requires a filename given with <a href="#cc1541_f">-f</a>.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 <a href="#cc1541_f">-f</a> "----------------" -L image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+0    "----------------" prg
+664 blocks free.</pre>
+    </section>
+
+    <!-- -m
+    ============================ -->
+    <section id="cc1541_m">
+      <h4>-m</h4>
+      <p><a href="https://csdb.dk/release/?id=226124">Krill's loader</a>, a flexible fast loading system, is using a hash that is calculated from the filename to identify files. cc1541 checks automatically if multiple filenames result in the same hash. This would make it impossible to load any of them except the first one with <a href="https://csdb.dk/release/?id=226124">Krill's loader</a>. In rare cases, this check can fail even for different filenames. If there is no requirement to support <a href="https://csdb.dk/release/?id=226124">Krill's loader</a>, the check can be disabled using this switch.</p>
+    </section>
+
+    <!-- -M
+    ============================ -->
+    <section id="cc1541_M">
+      <h4>-M &lt;numchars&gt;</h4>
+      <p>The maximum file length to include into the hash calculation for <a href="https://csdb.dk/release/?id=226124">Krill's loader</a>. <a href="https://csdb.dk/release/?id=226124">Krill's loader</a>, a flexible fast loading system, is using a hash that is calculated from the filename to identify files. To work correctly, the parameter for this switch and the loader option FILENAME_MAXLENGTH in <a href="https://csdb.dk/release/?id=226124">Krill's loader</a> must be set to the same value. The default for this setting is 16, taking the maximum possible CBM DOS file length into account.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -M 4 <a href="#cc1541_f">-f</a> file1 <a href="#cc1541_w">-w</a> file1.prg <a href="#cc1541_f">-f</a> file2 <a href="#cc1541_w">-w</a> file2.prg image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+13   "file1"            prg
+13   "file2"            prg
+638 blocks free.
+
+Hash of filename "file1" [$ea26] is not unique
+ [$ea26] "file1"
+ [$ea26] "file2"
+Hash of filename "file2" [$ea26] is not unique
+ [$ea26] "file1"
+ [$ea26] "file2"
+
+ERROR: Filename hash collision detected, image is not compatible with Krill's loader. Use -m to ignore this error.</pre>
+    </section>
+
+    <!-- -n
+    ============================ -->
+    <section id="cc1541_n">
+      <h4>-n &lt;diskname&gt;</h4>
+      <p>This sets the disk name, which is displayed at the top of the directory. The maximum length is 16 characters, any additional characters will be truncated. If not set, the default is "cc1541".</p>
+      <p>The argument of this command line switch supports the <a href="#cc1541_escape">escape mechanism</a> to specify hexadecimal PETSCII codes in a string.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -n <b>mydisk</b> image.d64
+Adding 0 files to new image image.d64
+
+0 "<b>mydisk</b>          " 00 2a
+664 blocks free.
+      </pre>
+    </section>
+
+    <!-- -N
+    ============================ -->
+    <section id="cc1541_N">
+      <h4>-N</h4>
+      <p>Force creation of a new directory entry, even if a file with the same name exists already. This is mostly intended for directory art, because having two files with the same name means that the second file cannot be loaded. The flag needs to be provided per file.</p>
+      <p>Be aware that this switch implies the switch <a href="#cc1541_m">-m</a>, and checks for hash collisions for <a href="https://csdb.dk/release/?id=226124">Krill's loader</a> are disabled.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 <a href="#cc1541_m">-m</a> <a href="#cc1541_f">-f</a> "----------------" <a href="#cc1541_L">-L</a> -N <a href="#cc1541_f">-f</a> "----------------" <a href="#cc1541_L">-L</a> image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+0    "----------------" prg
+0    "----------------" prg
+664 blocks free.
+      </pre>
+    </section>
+
+    <!-- -o
+    ============================ -->
+    <section id="cc1541_o">
+      <h4>-o</h4>
+      <p>This switch will exit cc1541 with an error, if an attempt is made to overwrite a file that exists on the disk image already. Without the switch, the file will simply be overwritten.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"         prg
+648 blocks free.
+
+&gt; cc1541 -o <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to existing image image.d64
+ERROR: Filename exists on disk image already and -o was set</pre>    </section>
+
+    <!-- -O
+    ============================ -->
+    <section id="cc1541_O">
+      <h4>-O</h4>
+      <p>Mark next file as open (actually clears the closed flag in Bit 7 of the file type). Open files are signified by a * before the file type in the directory. Note that an open DEL file is used by CBM DOS to mark a free directory slot, so it will not be visible in the directory and the directory slot will be re-used when adding further files.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -O <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"        *prg
+648 blocks free.
+      </pre>
+    </section>
+
+    <!-- -p
+    ============================ -->
+    <section id="cc1541_p">
+      <h4>-p &lt;track&gt;,&lt;sector&gt;,&lt;offset&gt;,&lt;filename&gt;</h4>
+      <p>Write a binary patch at the given track, sector and offset onto the disk image. If the data needs more than one block, consecutive sectors and tracks will be used. All modified blocks are marked as used in the BAM.</p>
+      <p>Note that patches are applied before writing files. Block allocation for the files will therefore avoid the patched blocks.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -p 18,18,0,highscore.bin image.d64
+      </pre>
+    </section>
+
+    <!-- -P
+    ============================ -->
+    <section id="cc1541_P">
+      <h4>-P</h4>
+      <p>Mark next files as write protected. Write protected files are signified by a &lt; behind the file type in the directory.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -P <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"         prg&lt;
+648 blocks free.
+      </pre>
+    </section>
+
+    <!-- -q
+    ============================ -->
+    <section id="cc1541_q">
+      <h4>-q</h4>
+      <p>Minimize printouts, i.e., only print something for error cases.</p>
+    </section>
+
+    <!-- -r
+    ============================ -->
+    <section id="cc1541_r">
+      <h4>-r &lt;track&gt;</h4>
+      <p>Restrict next file blocks to the specified track or, if that track is full, to the next higher track that has space.</p>
+    </section>
+
+    <!-- -R
+    ============================ -->
+    <section id="cc1541_R">
+      <h4>-R &lt;level&gt;</h4>
+      <p>Try to restore deleted and formatted files. This can be done with different levels, that will successively find more potentially deleted files, but also likely create more false positives with trash data. </p>
+      <p>If it is impossible to restore the original file name, a file in the format "tXXsYY$ZZZZ" is created, with XX, YY and ZZZZ being the start track, start sector, and load address.</p>
+      <ul>
+        <li>Level 0: Only restore directory entries without touching any track/sector links.</li>
+        <li>Level 1: Fix directory entries for files with valid track/sector chains.</li>
+        <li>Level 2: Also add wild sector chains without any reference from the directory that have valid track/sector chains.</li>
+        <li>Level 3: Also fix directory entries with invalid track/sector chains.</li>
+        <li>Level 4: Also add and fix wild without any reference from the directory that have invalid track/sector chains.</li>
+        <li>Level 5: Also add wild single blocks without any reference from the directory, that contain only zeros after the signaled sector length.</li>
+      </ul>
+    </section>
+
+    <!-- -s
+    ============================ -->
+    <section id="cc1541_s">
+      <h4>-s &lt;value&gt;</h4>
+      <p>Sector interleave for the next file. The interleave value falls back to the default value set by <a href="#cc1541_S">-S</a> after the first sector of the file that comes after next one. Not applicable for D81 images or Transwarp files.</p>
+    </section>
+
+    <!-- -S
+    ============================ -->
+    <section id="cc1541_S">
+      <h4>-S &lt;value&gt;</h4>
+      <p>This sets the default sector interleave. Reading from floppy disk usually happens in two steps: first one sector of GCR data is read from the disk and stored in a buffer in the disk drive. Then GCR decoding takes place, and the decoded data is transmitted over the serial interface. For CBM DOS (and most fast loaders), the second part needs longer than the first part. For this reason, loading performance is best, if successive blocks are written with several sectors between them, so that ideally when part 2 is finished, the next sector just passes by the read head. CBM DOS uses an interleave of 10, which means that successive blocks are written with a distance of 10 sectors. For this reason, the default value for this switch is 10.</p>
+      <div class="col-lg-6">
+        <p><img class="img-fluid" src="assets/images/sector_interleave.png" alt=""></p>
+      </div>
+      <p><em>Example, how the blocks A, B, C, D, E of a file are distributed on a track with default sector interleave.</em></p>
+      <p>This switch is not applicable for D81 images or Transwarp files.</p>
+    </section>
+
+    <!-- -t
+    ============================ -->
+    <section id="cc1541_t">
+      <h4>-t</h4>
+      <p>If a disk image becomes full, this switch allows to squeeze some more data in by also using the directory track for files. The switch <a href="#cc1541_u">-u</a> allows to specify how many blocks should be left free on the directory track. Note that this switch will override <a href="#cc1541_x">-x</a>.</p>
+      <p>For D71 images, track 53 is usually completely allocated, although only sector 0 is actually used for the second side BAM. If this switch is used during the creation of the D71 image, only sector 0 will be allocated, so 18 additional sectors can be used to store files.</p>
+    </section>
+
+    <!-- -T
+    ============================ -->
+    <section id="cc1541_T">
+      <h4>-T &lt;type&gt;</h4>
+      <p>Filetype for next file, allowed parameters are three-letter values from the table below, or a decimal number between 0 and 255. Default is PRG.</p>
+      <table class="table table-bordered">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PRG</td>
+            <td>Normal C64 program, the first two bytes specify the load address.</td>
+          </tr>
+          <tr>
+            <td>SEQ</td>
+            <td>Sequential data file.</td>
+          </tr>
+          <tr>
+            <td>USR</td>
+            <td>User file with application dependent format.</td>
+          </tr>
+          <tr>
+            <td>REL</td>
+            <td>Relative data file that allows random access to the data records.</td>
+          </tr>
+          <tr>
+            <td>DEL</td>
+            <td>Deleted file, only visible while it is still open.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -T <b>USR</b> <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"         <b>usr</b>
+648 blocks free.
+      </pre>
+      <p>Here is a description of the respective bits for the numerical value:</p>
+      <ul>
+        <li>Bit 0-3: Filetype, 0 for DEL, 1 for SEQ, 2 for PRG, 3 for USR, 4 for REL, 5...15 illegal</li>
+        <li>Bit 4: unused</li>
+        <li>Bit 5: used during CBM DOS overwrite operation</li>
+        <li>Bit 6: write protected flag, signified by a &lt; behind the file type in the directory</li>
+        <li>Bit 7: closed flag, open files are signified by a * behind the file type in the directory</li>
+      </ul>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -T <b>192</b> <a href="#cc1541_w">-w</a> file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"         <b>del&lt;</b>
+648 blocks free.
+      </pre>
+    </section>
+
+    <!-- -u
+    ============================ -->
+    <section id="cc1541_u">
+      <h4>-u &lt;numblocks&gt;</h4>
+      <p>When using <a href="#cc1541_t">-t</a> to allow to store files on the directory track, this switch specifies the number of directory blocks to keep free, so that additional directory entries are still possible. This can be useful for directory art. The default setting for this switch is 2.</p>
+    </section>
+
+    <!-- -U
+    ============================ -->
+    <section id="cc1541_U">
+      <h4>-U &lt;mapping&gt;</h4>
+      <p>Print PETSCII as Unicode. This makes sense if a Unicode 13.0 font is installed, e.g., <a href="http://viznut.fi/unscii/">UNSCII</a>. The parameter for this switch can be:</p>
+      <ul>
+        <li>0: ASCII output</li>
+        <li>1: Upper case PETSCII output</li>
+        <li>2: Lower case PETSCII output</li>
+      </ul>
+      <p>The output format can also be set globally by defining the environment variable CC1541UNICODE to one of the supported values, so the switch does not have to be set every time manually.</p>
+    </section>
+
+    <!-- -v
+    ============================ -->
+    <section id="cc1541_v">
+      <h4>-v</h4>
+      <p>Print verbose information about the disk image, e.g., a file allocation table, an overview of the block allocation, the filename hashes for <a href="https://csdb.dk/release/?id=226124">Krill's loader</a>, and the escaped ASCII filename for each directory entry.</p>
+    </section>
+
+    <!-- -V
+    ============================ -->
+    <section id="cc1541_V">
+      <h4>-V</h4>
+      <p>This switch enables a check if the given disk image is in valid CBM DOS format. Otherwise, it will display the first non-conformity, and exit with an error. In this case, the image will not be modified. The following checks are performed:</p>
+      <ul>
+        <li>The format specifier in the directory is $41 for D64 and D71, or $44 for D81</li>
+        <li>The double-sided flag is 0 for D64 or $80 for D71</li>
+        <li>The file type for each directory entry is one of PRG, SEQ, USR, REL or DEL</li>
+        <li>No invalid track or sector references in the directory entries</li>
+        <li>No invalid track or sector references in the track/sector chain for each file</li>
+        <li>No collisions with other files or loops in the track/sector chain for each file</li>
+        <li>The block allocation table is consistent with the blocks used by the files</li>
+      </ul>
+    </section>
+
+		<!-- -w
+		============================ -->
+    <section id="cc1541_w">
+      <h4>-w &lt;filename&gt;</h4>
+      <p>Write a local file to the disk image. If the disk filename is not set with <a href="#cc1541_f">-f</a>, then the local filename is used, stripped off any preceding path and truncated to the maximum length of 16 characters. </p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -w file.prg image.d64
+Adding 1 files to new image image.d64
+
+0 "cc1541          " 00 2a
+16   "file.prg"         prg
+648 blocks free.
+      </pre>
+    </section>
+
+		<!-- -W
+		============================ -->
+    <section id="cc1541_W">
+      <h4>-W &lt;filename&gt;</h4>
+      <p>Write a local file to the disk image in Transwarp format. It is required to provide a Transwarp boot file as last file with <a href="#cc1541_w">-w</a>, unless the image already contains such a file. A Transwarp boot file is part of the cc1541 distribution package using the name scheme "transwarp vX.Y.prg". A name for the directory entry of the Transwarp boot file can be provided with <a href="#cc1541_f">-f</a>, but it is required to start with "transwarp".</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -W file.prg <a href="#cc1541_w">-w</a> "transwarp 0.86.prg" image.d64
+Adding 2 files to new image image.d64
+
+0 "cc1541          " 00 2a
+21   "file.prg"         prg
+32   "transwarp v0.86." prg
+626 blocks free.</pre>
+    </section>
+
+    <!-- -x
+    ============================ -->
+    <section id="cc1541_x">
+      <h4>-x</h4>
+      <p>Per default, cc1541 will split a file if needed, so that parts of it are below the directory track and parts of it are above. This allows to use the space on the disk more efficiently but might have a small speed impact when loading the split file. This switch prohibits such a split.</p>
+    </section>
+
+    <!-- -x
+    ============================ -->
+    <section id="cc1541_X">
+      <h4>-X &lt;filename&gt;</h4>
+      <p>Extract files from the disk image. Wildcards "*" and "?" are supported and all files that match will be extracted.</p>
+      <p>Note that for Transwarp files, the boot file will be extracted instead.</p>
+      <p><b>Example:</b></p>
+      <pre>&gt; cc1541 -X "p*" image.d64
+Adding 0 files to existing image image.d64
+
+Extracting program1.prg
+Extracting program2.prg
+
+0 "cc1541          " 00 2a
+13   "program1"         prg
+13   "program2"         prg
+13   "data"             prg
+625 blocks free.</pre>
+    </section>
+    </section>
+
+    <hr class="divider">
+
+    <!-- Building
+		============================ -->
+    <section id="cc1541_build">
+      <h2>Building</h2>
+      <p>cc1541 can easily be built from the source code distribution package, e.g., for OSs or platforms that are not included in the binary distribution package. Two build systems are supported: make and Microsoft Visual Studio. For make, there are two relevant targets included:</p>
+      <table class="table table-bordered">
+        <tr>
+          <td>all</td>
+          <td>This will build the command line tool itself</td>
+        </tr>
+        <tr>
+          <td>test</td>
+          <td>This will build and execute the test suite</td>
+        </tr>
+      </table>
+      <p>It is advisable to run the test suite to make sure that the build of cc1541 works as expected.</p>
+      <p>For Visual Studio, open the solution file cc1541.sln. It contains two projects, again one for the tool itself and one for the test suite.</p>
+
+    </section>
+
+    <hr class="divider">
+
+    <!-- Changelog
+		============================ -->
+    <section id="cc1541_changelog">
+      <h2>Changelog</h2>
+      <h3>v4.2</h3>
+      <ul>
+        <li>-X switch added to allow extraction of files from images. For
+          Transwarp files, the transwarp boot loader will be extracted instead.
+        </li>
+        <li>-p switch added to write arbitrary data directly at a certain place
+          on the disk.
+        </li>
+        <li>-N now implies -m to avoid duplicate hash errors per default.
+        </li>
+        <li>-l now allows to use wildcards * and ?.
+        </li>
+        <li>Per default, complete track 53 is reserved for D71 now, just as in
+          the original format routine. This can be overriden by -t during the
+          creation of the D71 image. Thanks to Martin Thierer for the help!
+        </li>
+        <li>Hex escapes now allow both upper case and lower case.
+        </li>
+        <li>In verbose mode, filenames are printed with escape characters now.
+        </li>
+        <li>-a switch avoids hex escapes now where possible.
+        </li>
+        <li>Bugfix: The display of free blocks was utterly wrong for D71, thanks
+          to Martin Thierer for the fix!
+        </li>
+        <li>Bugfix: Validate did not work for D71, thanks to Martin Thierer for
+          the fix! It also works for D81 now.
+        </li>
+        <li>Bugfix: -c resulted in "disk full" error for non-D71, it is now
+          rejected instead.
+        </li>
+        <li>Bugfix: validation would complain about looped t/s chains when it
+          was actually a collision between different t/s chains.
+        </li>
+        <li>Bugfix: the default disk id "00 2a" now has a shift-space in the
+          middle, just as in the original format routine.
+        </li>
+      </ul>
+      <h3>v4.1</h3>
+      <ul>
+        <li>Per default, Transwarp files will now be allocated such that
+          less disk space is wasted. Old behavior can still be enabled
+          with -A 0.
+        </li>
+        <li>Command line options -s and -b are now rejected for Transwarp
+          files instead of being silently ignored.
+        </li>
+        <li>Unicode printout can now be configured with environment variable
+          CC1541UNICODE, using same values as for -U switch.
+        </li>
+        <li>Bugfix: the last allocated track for Transwarp files was not
+          checked to be free, sometimes resulting in unexpected write
+          errors.
+        </li>
+        <li>Bugfix: mixing Transwarp and normal files would often leave
+          parts of the disk unallocated, so that less data than expected
+          would fit onto a disk.
+        </li>
+        <li>Bugfix: verbose file allocation printout would sometimes print
+          garbage for filenames or block numbers
+        </li>
+      </ul>
+      <h3>v4.0</h3>
+      <ul>
+        <li>The default handling for large tail gaps has been removed, as it
+          does not provide any advantage and was only there to be as close
+          as possible to CBM DOS behavior. In fact, it slows down
+          fast loaders. This warrants a major version number increase.
+        </li>
+        <li>-H switch added to set BAM messages at BAM offset $ab
+        </li>
+        <li>-F with negative values now specifies a track skew
+        </li>
+        <li>-B cannot be used with Transwarp files anymore, as the loader
+          relies on correct block sizes in the directory
+        </li>
+        <li>Bugfix: the BAM allocation for SPEED DOS and DOLPHIN DOS was
+          wrong (mixed up between the two and shifted by 4 bytes)
+        </li>
+        <li>Bugfix: Data from unused blocks could leak into the last block
+          of a new file behind the actual file data
+        </li>
+      </ul>
+      <h3>v3.4</h3>
+      <ul>
+        <li>Support for Transwarp 0.86 and later
+        </li>
+        <li>Command line option -R added for restoring deleted or formatted
+          files
+        </li>
+        <li>-L switch added to create directory entries without writing a
+          file
+        </li>
+        <li>-a switch added to print a cc1541 command line that re-creates
+          the directory art of the given disk image
+        </li>
+        <li>-T now also allows a number as parameter
+        </li>
+        <li>Files with file type DEL will now actually be written, use
+          -L to avoid that
+        </li>
+        <li>Improved verbose allocation printout
+        </li>
+        <li>More robustness against invalid t/s links
+        </li>
+        <li>Added support for underscore in PETSCII filenames
+        </li>
+        <li>Bugfix: no endless loops for cyclic directory chains anymore
+        </li>
+      </ul>
+      <h3>v3.3</h3>
+      <ul>
+        <li>Transwarp encoding added
+        </li>
+        <li>Verbose mode displays file allocation on unmodified images
+        </li>
+        <li>Optimized non-standard interleave scheme
+        </li>
+        <li>Added Unicode printout option for PETSCII, special thanks to
+          Jonas Minnberg for helping with Linux support and inverse
+          characters!
+        </li>
+        <li>Output file is not touched when no change is requested
+        </li>
+        <li>Bugfix: Fixed crash on write protected output file
+        </li>
+        <li>Bugfix: Spacing in directory printout was not correct when
+          file size is more than 999 blocks
+        </li>
+      </ul>
+      <h3>v3.2</h3>
+      <ul>
+        <li>-N switch added to allow duplicate file names
+        </li>
+        <li>Trying to create loop file with the same name as the referenced
+          file now throws an error, if not -N is also specified
+        </li>
+        <li>Changed default next file first sector on new track to 0 to align
+          with Commodore DOS
+        </li>
+        <li>Interleave violations are now shown in block allocation printout
+        </li>
+        <li>Block allocation for loop files is not displayed anymore when
+          referenced file was also written
+        </li>
+        <li>Bugfix: Fixed file index printout for block allocation
+        </li>
+        <li>Bugfix: Correct interleave is now displayed for loop files when
+          referenced file was also written
+        </li>
+      </ul>
+      <h3>v3.1</h3>
+      <ul>
+        <li>Bugfix: overwriting files did not work correctly when there was a
+          free slot in the directory before the file to overwrite
+        </li>
+        <li>Bugfix: Filetype, open and protected flags were not reset after
+          writing a file
+        </li>
+        <li>Bugfix: default disk name and id were wrong in command line help
+        </li>
+      </ul>
+      <h3>v3.0</h3>
+      <ul>
+        <li>ASCII to PETSCII conversion added, this breaks backward
+          compatibility (and therefore warrants a major version increase)!
+        </li>
+        <li>Support for D81 images
+        </li>
+        <li>Default printout is now a full directory similar to how it would be
+          displayed on a Commodore machine
+        </li>
+        <li>-v switch added for verbose output of file and block allocation
+        </li>
+        <li>-M switch added to specify number of characters for filename hash
+          calculation for latest Krill loader
+        </li>
+        <li>-m switch added to skip filename collision check
+        </li>
+        <li>-B switch added to allow setting the displayed file size
+        </li>
+        <li>-o switch added to prevent overwriting of existing files on an image
+        </li>
+        <li>-V switch added to validate images before editing them
+        </li>
+        <li>-T switch added to allow setting the file type
+        </li>
+        <li>-O switch added to allow setting the open flag
+        </li>
+        <li>-P switch added to allow setting the protected flag
+        </li>
+        <li>Hex escapes are now also allowed for disk name and ID
+        </li>
+        <li>When no disk file name is provided, only the base name of the input
+          file is used as disk file name instead of the full path
+        </li>
+        <li>Bugfix: fixed memory access issue for filenames with 16 letters
+        </li>
+        <li>Bugfix: fixed endless loop when reaching track 53 on a D71
+        </li>
+        <li>Bugfix: fixed that (shadow) directory track would be used for data
+          when the shadow directory is a neighbor of the actual directory
+        </li>
+        <li>Bugfix: G64 output is now an optional additional output using -g,
+          avoiding the utterly broken reading of G64 files
+        </li>
+        <li>Bugfix: loop files have actual file size per default instead of 0
+        </li>
+        <li>Bugfix: printouts to stderr and stdout are more consistent now
+        </li>
+      </ul>
+      <h3>v2.0</h3>
+      <ul>
+        <li>The first version with a release number
+        </li>
+        <li>All existing modifications consolidated (hopefully)
+        </li>
+        <li>G64 output dependent on output file name instead of a source code
+          define
+        </li>
+        <li>Converted to ANSI C99
+        </li>
+        <li>MSVC build files added
+        </li>
+        <li>getopt removed
+        </li>
+        <li>Simple test suite added
+        </li>
+        <li>Bugfix: hex escape was not considered for file overwrite detection
+        </li>
+        <li>Bugfix: first sector per track was ignored for track 1
+        </li>
+        <li>Bugfix: default sector interleave was ignored for first file
+        </li>
+      </ul>
+    </section>
+
+    <hr class="divider">
+
+    <!-- License
+		============================ -->
+    <section id="cc1541_license">
+      <h2>License</h2>
+      <p>Copyright (c) 2008-2024 JackAsser, Krill, Claus, Björn Esser</p>
+      <p>Permission is hereby granted, free of charge, to any person obtaining
+      a copy of this software and associated documentation files (the
+      "Software"), to deal in the Software without restriction, including
+      without limitation the rights to use, copy, modify, merge, publish,
+      distribute, sublicense, and/or sell copies of the Software, and to
+      permit persons to whom the Software is furnished to do so, subject to
+      the following conditions:</p>
+      <p>The above copyright notice and this permission notice shall be
+      included in all copies or substantial portions of the Software.</p>
+      <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+      EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+      MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+      NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+      BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+      ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+      CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+      SOFTWARE.</p>
+    </section>
+
+  </div>
+  <!-- Content end -->
+
+</div>
+<!-- Document Wrapper end -->
+
+<!-- Back To Top -->
+<a id="back-to-top" data-toggle="tooltip" title="Back to Top" href="javascript:void(0)"><i class="fa fa-chevron-up"></i></a>
+
+<!-- JavaScript
+============================ -->
+<script src="assets/vendor/jquery/jquery.min.js"></script>
+<script src="assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<!-- Highlight JS -->
+<script src="assets/vendor/highlight.js/highlight.min.js"></script>
+<!-- Easing -->
+<script src="assets/vendor/jquery.easing/jquery.easing.min.js"></script>
+<!-- Magnific Popup -->
+<script src="assets/vendor/magnific-popup/jquery.magnific-popup.min.js"></script>
+<!-- Custom Script -->
+<script src="assets/js/theme.js"></script>
+</body>
+</html>
