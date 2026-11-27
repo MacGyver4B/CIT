@@ -45,6 +45,7 @@ test_cit: test_cit.o
 
 check: cit test_cit
 	./test_cit ./cit
+	sh tests/formats.sh ./cit
 
 test: check
 
