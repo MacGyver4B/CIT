@@ -187,7 +187,7 @@ art_test() {
         -f kopie -l spiel -T DEL -N -f "----------------" -L src.d64 > /dev/null 2>&1
     "$CIT" --convert src.d64 dst.d82 > /dev/null 2>&1
     if "$CIT" -V dst.d82 > /dev/null 2>&1; then ok; else bad "directory art: -V failed"; fi
-    if [ "$("$CIT" src.d64 | sed -n '4,10p')" = "$("$CIT" dst.d82 | sed -n '4,10p')" ]; then ok; else bad "directory art: listing differs after --convert"; fi
+    if [ "$("$CIT" src.d64 2>/dev/null | sed -n '4,10p')" = "$("$CIT" dst.d82 2>/dev/null | sed -n '4,10p')" ]; then ok; else bad "directory art: listing differs after --convert"; fi
     cd .. && rm -rf at
 }
 art_test
