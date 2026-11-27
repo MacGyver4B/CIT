@@ -2224,17 +2224,30 @@ main(int argc, char* argv[])
         }
     }
     if (alloc_mode != ALLOC_CC1541) {
-        /* the cc1541 placement options have no meaning for the dos and auto strategies */
-        if (transwarp_set || usedirtrack || shadowdirtrack || !dirtracksplit) {
-            fprintf(stderr, "ERROR: Transwarp, -t, -d and -x only work with --alloc cc1541\n");
-            return -1;
+        /* Transwarp, -t and -d change the structure of the disk; they need the
+           cc1541 strategy, which replaces the chosen one */
+        if (transwarp_set || usedirtrack || shadowdirtrack) {
+            fprintf(stderr, "WARNING: Transwarp, -t and -d need --alloc cc1541, using it instead of %s\n",
+                    (alloc_mode == ALLOC_DOS) ? "dos" : "auto");
+            alloc_mode = ALLOC_CC1541;
         }
+    }
+    if (alloc_mode != ALLOC_CC1541) {
+        /* the cc1541 placement options have no meaning for dos and auto: ignored */
+        bool ignored = !dirtracksplit;
         for (int k = 0; k < num_files; k++) {
-            if (files[k].start_sector_set || files[k].save_to_empty_track || files[k].fit_on_single_track
-                    || files[k].min_track > 0 || files[k].cluster_optimized) {
-                fprintf(stderr, "ERROR: -b, -e, -E, -r and -c only work with --alloc cc1541\n");
-                return -1;
-            }
+            ignored |= files[k].start_sector_set || files[k].save_to_empty_track || files[k].fit_on_single_track
+                       || files[k].min_track > 0 || files[k].cluster_optimized;
+            files[k].start_sector_set = false;
+            files[k].save_to_empty_track = false;
+            files[k].fit_on_single_track = false;
+            files[k].min_track = 0;
+            files[k].cluster_optimized = false;
+        }
+        dirtracksplit = 1;
+        if (ignored) {
+            fprintf(stderr, "WARNING: -b, -e, -E, -r, -c and -x are ignored with --alloc %s\n",
+                    (alloc_mode == ALLOC_DOS) ? "dos" : "auto");
         }
     }
     if (d40 && transwarp_set) {
