@@ -351,12 +351,12 @@ main(int argc, char* argv[])
     printf("%0*d:  %s:  %s\n", test_pad, test, result_str[result], description);
     remove("1.prg");
 
-    description = "Disk ID should be found in track 40 sector 0 offset 0x16 for d81";
+    description = "Disk ID should be found in track 40 sector 0 offset 0x16 for d81, completed to \"01 3D\"";
     ++test;
     create_value_file("1.prg", 254, 37);
-    if (run_binary_cleanup(binary, "-i 01234 -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
+    if (run_binary_cleanup(binary, "-i 01 -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
         result = TEST_UNRESOLVED;
-    } else if (strncmp(&image[40 * 39 * 256 + 0x16], "01234", 5) == 0) {
+    } else if (memcmp(&image[40 * 39 * 256 + 0x16], "01\xa0" "3D", 5) == 0) {
         result = TEST_PASS;
         ++passed;
     } else {

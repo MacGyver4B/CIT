@@ -38,6 +38,10 @@ printf '\000' > "$IN/zero.bin"
 
 # --- cases: P is replaced by the program; several commands separated by ;
 N='-n TESTDISK -i 12#a02a'
+# D71/D81: CIT takes only the 2 id characters, the rest is set by the format.
+# cc1541 gets the complete standard id, so both images must still be equal.
+N2A='-n TESTDISK -i @ID2A@'
+N3D='-n TESTDISK -i @ID3D@'
 CASES="
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64
 P $N -4 -f AAA -w big.prg -f BBB -w big.prg -f CCC -w big.prg x.d64
@@ -58,16 +62,16 @@ P $N -m -M 4 -f ABCD1 -w small.prg -f ABCD2 -w small.prg x.d64
 P $N -f GAME -W mid.prg -f MORE -W small.prg -f 'transwarp v0.86' -w tw.prg x.d64
 P $N -4 -A 0 -K SECRET -f GAME -W big.prg -f 'transwarp v0.86' -w tw.prg x.d64
 P $N -g out.g64 -f AAA -w mid.prg -f BBB -w small.prg x.d64
-P $N -f AAA -w big.prg -f BBB -w big.prg x.d71
-P $N -c -f AAA -w big.prg -c -f BBB -w big.prg x.d71
-P $N -f AAA -w big.prg -f BBB -w small.prg x.d81
+P $N2A -f AAA -w big.prg -f BBB -w big.prg x.d71
+P $N2A -c -f AAA -w big.prg -c -f BBB -w big.prg x.d71
+P $N3D -f AAA -w big.prg -f BBB -w small.prg x.d81
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -V x.d64; P -v x.d64; P -a x.d64
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -X AAA x.d64; P -X 'B*' x.d64
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -p 18,1,2,zero.bin x.d64; P -R 1 x.d64
-P $N -f AAA -w mid.prg -f BBB -w small.prg x.d81; P -p 40,3,2,zero.bin x.d81; P -R 3 x.d81
+P $N3D -f AAA -w mid.prg -f BBB -w small.prg x.d81; P -p 40,3,2,zero.bin x.d81; P -R 3 x.d81
 P $N -U 1 -f ABC#c1#c2 -w small.prg x.d64
 P $N -f AAA -w nonexistent.prg x.d64
-P $N -4 -f AAA -w small.prg x.d71
+P $N2A -4 -f AAA -w small.prg x.d71
 "
 
 run() { # $1 program, $2 directory, $3 commands
@@ -76,6 +80,11 @@ run() { # $1 program, $2 directory, $3 commands
     ( cd "$2" || exit 2
       echo "$3" | tr ';' '\n' | while read -r line; do
           [ -n "$line" ] || continue
+          if [ "$prog" = "$OLD" ]; then
+              line=$(echo "$line" | sed 's/@ID2A@/12#a02a/g; s/@ID3D@/12#a03d/g')
+          else
+              line=$(echo "$line" | sed 's/@ID2A@/12/g; s/@ID3D@/12/g')
+          fi
           eval "set -- $(echo "$line" | sed 's/^ *P//')"
           "$prog" "$@" >> out.txt 2>&1
           echo "rc=$?" >> out.txt

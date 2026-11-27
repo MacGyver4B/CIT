@@ -2087,8 +2087,26 @@ main(int argc, char* argv[])
         }
     }
     dir_sector_interleave = fmt(type)->dir_interleave;
+    /* The 5 byte id field is "id A0 dos-version". Only the C64 D64 (D41,
+       also with -4/-5) keeps cc1541's free 5 byte id; for all other formats
+       -i sets the 2 id characters and the rest comes from the format. */
+    bool free_id = (type == IMAGE_D64 && !d40) || extended;
+    static char full_id[64];
     if (!id_set) {
         id = (unsigned char*)fmt(type)->default_id;
+    } else if (!free_id) {
+        const char *p = (const char *)id;
+        int len = 0;
+        while (*p) {
+            p += (p[0] == '#' && isxdigit((unsigned char)p[1]) && isxdigit((unsigned char)p[2])) ? 3 : 1;
+            len++;
+        }
+        if (len != 2 || strlen((const char *)id) > 6) {
+            fprintf(stderr, "ERROR: The disk id must be 2 characters for %s images\n", fmt(type)->name);
+            return -1;
+        }
+        snprintf(full_id, sizeof full_id, "%s%s", (const char *)id, fmt(type)->default_id + 2);
+        id = (unsigned char*)full_id;
     }
     for (int k = 0; k < num_files; k++) {
         if (files[k].start_sector_set && files[k].start_sector >= max_sectors(type)) {

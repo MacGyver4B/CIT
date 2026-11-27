@@ -64,7 +64,7 @@ static const format_t formats[] = {
         .dir_track = 40, .first_dir_sector = 3, .dir_interleave = 1,
         .header_offset = 0x04, .id_offset = 0x16, .dos_type = 'D',
         .num_bam_blocks = 2, .bam_block = {{40, 1}, {40, 2}},
-        .default_id = "00#a02a"   /* as cc1541; the 1581 itself writes "3D" */
+        .default_id = "00#a03d"
     },
     /* 8050 and 8250/SFD-1001 (DOS 2.7): header 39/0, BAM on track 38 (one
        block per 50 tracks), directory from 39/1 with interleave 3 */
