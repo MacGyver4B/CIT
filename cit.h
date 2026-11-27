@@ -158,7 +158,16 @@ typedef struct {
     int                  nrSectors;
     int                  nrSectorsShown;
     int                  filetype;
-    int                  mode;
+    /* placement of the file (strategy cc1541) and kind of entry */
+    int                  start_sector;         /* -b: first sector of the file */
+    bool                 start_sector_set;
+    int                  min_track;            /* -r: lowest track, 0 = none */
+    bool                 save_to_empty_track;  /* -e */
+    bool                 fit_on_single_track;  /* -E */
+    bool                 cluster_optimized;    /* -c: D71, both sides of a track */
+    bool                 loop_file;            /* -l: second entry of an existing file */
+    bool                 no_file;              /* -L: directory entry only */
+    bool                 transwarp_boot;       /* the Transwarp boot file */
     int                  force_new;
     int                  size;
     int                  last_track;
@@ -172,18 +181,6 @@ typedef struct {
     int sector;
     int offset;
 } patch;
-
-enum mode {
-    MODE_BEGINNING_SECTOR_MASK   = 0x0000ff, /* 8 bits: sector + 1 (up to 192 sectors per track) */
-    MODE_MIN_TRACK_MASK          = 0x00ff00, /* 8 bits (up to 154 tracks) */
-    MODE_MIN_TRACK_SHIFT         = 8,
-    MODE_SAVETOEMPTYTRACKS       = 0x010000,
-    MODE_FITONSINGLETRACK        = 0x020000,
-    MODE_SAVECLUSTEROPTIMIZED    = 0x040000,
-    MODE_LOOPFILE                = 0x080000,
-    MODE_TRANSWARPBOOTFILE       = 0x100000,
-    MODE_NOFILE                  = 0x200000
-};
 
 typedef enum {
     IMAGE_D64,
@@ -219,6 +216,7 @@ typedef struct {
     int header_offset;          /* disk name in the header sector */
     int id_offset;              /* disk id (5 bytes incl. dos type) */
     unsigned char dos_type;     /* format byte at offset 2, 0 = not checked */
+    int second_bam_track;       /* 1571: BAM of the second side (track 53), 0 = none */
 } format_t;
 
 /* cit.c: global settings */
@@ -256,6 +254,7 @@ unsigned int image_num_blocks(image_type type);
 unsigned int image_size(image_type type);
 int dirtrack(image_type type);
 int first_dir_sector(image_type type);
+int side_tracks(image_type type);
 int linear_sector(image_type type, int track, int sector);
 int is_sector_free(image_type type, const unsigned char* image, int track, int sector, int numdirblocks, int dir_sector_interleave);
 void mark_sector(image_type type, unsigned char* image, int track, int sector, int free);

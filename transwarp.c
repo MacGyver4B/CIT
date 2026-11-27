@@ -588,9 +588,9 @@ write_transwarp_file(image_type type, unsigned char *image, imagefile *file, uns
 
     unsigned int track = DIRTRACK_D41_D71 - 1;
 
-    if ((file->mode & MODE_MIN_TRACK_MASK) > 0) {
+    if (file->min_track > 0) {
         /* for Transwarp files, a set minimum track is the file's starting track */
-        track = (file->mode & MODE_MIN_TRACK_MASK) >> MODE_MIN_TRACK_SHIFT;
+        track = file->min_track;
     } else {
         /* allocate */
         bool free_tracks[40];
@@ -1023,7 +1023,7 @@ optimize_transwarp_allocation(image_type type, unsigned char *image, imagefile *
     int o = 0;
     for(int f = 0; f < num_files; f++) {
         /* Transwarp files with -t */
-        int start_track = (files[f].mode & MODE_MIN_TRACK_MASK) >> MODE_MIN_TRACK_SHIFT;
+        int start_track = files[f].min_track;
         if((files[f].filetype & FILETYPETRANSWARPMASK) && (start_track > 0)) {
             start_track--; /* convert to array index */
             order[o++] = f;
@@ -1055,7 +1055,7 @@ optimize_transwarp_allocation(image_type type, unsigned char *image, imagefile *
     int num_transwarp = 0;
     for(int f = 0; f < num_files; f++) {
         /* other Transwarp files */
-        if((files[f].filetype & FILETYPETRANSWARPMASK) && ((files[f].mode & MODE_MIN_TRACK_MASK) <= 0)) {
+        if((files[f].filetype & FILETYPETRANSWARPMASK) && (files[f].min_track <= 0)) {
             order[o++] = f;
             if(num_transwarp < MAXPERMUTEDFILES) {
                 struct stat st;
@@ -1076,6 +1076,6 @@ optimize_transwarp_allocation(image_type type, unsigned char *image, imagefile *
     find_best_permutation(sizes, num_transwarp, sectors, num_tracks, start_tracks);
 
     for(int f = 0; f < num_transwarp; f++) {
-        files[order[first_transwarp + f]].mode |= ((start_tracks[f]+1) << MODE_MIN_TRACK_SHIFT);
+        files[order[first_transwarp + f]].min_track = start_tracks[f] + 1; /* was 0, see above */
     }
 }

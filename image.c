@@ -31,23 +31,23 @@ static const char *error_name[] = {
 static const format_t formats[] = {
     [IMAGE_D64] = {
         "D64", 35, 1, {{17, 21}, {24, 19}, {30, 18}, {35, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0x41
+        18, 1, 0, 3, 0x90, 0xa2, 0x41, 0
     },
     [IMAGE_D64_EXTENDED_SPEED_DOS] = {
         "D64 (40 tracks, SpeedDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0
+        18, 1, 0, 3, 0x90, 0xa2, 0, 0
     },
     [IMAGE_D64_EXTENDED_DOLPHIN_DOS] = {
         "D64 (40 tracks, DolphinDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0
+        18, 1, 0, 3, 0x90, 0xa2, 0, 0
     },
     [IMAGE_D71] = {
         "D71", 70, 2, {{17, 21}, {24, 19}, {30, 18}, {35, 17}, {52, 21}, {59, 19}, {65, 18}, {70, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0x41
+        18, 1, 0, 3, 0x90, 0xa2, 0x41, 53
     },
     [IMAGE_D81] = {
         "D81", 80, 1, {{80, 40}},
-        40, 3, 2, 1, 0x04, 0x16, 0x44
+        40, 3, 2, 1, 0x04, 0x16, 0x44, 0
     },
 };
 
@@ -113,6 +113,13 @@ int
 dirtrack(image_type type)
 {
     return fmt(type)->dir_track;
+}
+
+/* Returns the number of tracks on one side (D71: 35) */
+int
+side_tracks(image_type type)
+{
+    return fmt(type)->num_tracks / fmt(type)->sides;
 }
 
 /* Returns the first directory sector on the directory track */
@@ -425,10 +432,10 @@ initialize_directory(image_type type, unsigned char* image, unsigned char* heade
     /* Reserve space for BAM */
     mark_sector(type, image, dirtrack(type), 0 /* sector */, 0 /* not free */);
     if (type == IMAGE_D71) {
-        mark_sector(type, image, dirtrack(type) + D64NUMTRACKS, 0, 0 /* not free */);
+        mark_sector(type, image, fmt(type)->second_bam_track, 0, 0 /* not free */);
         if(!usedirtrack) {
-            for (int s = 1; s < num_sectors(type, dirtrack(type) + D64NUMTRACKS); s++) {
-                mark_sector(type, image, dirtrack(type) + D64NUMTRACKS, s, 0 /* not free */);
+            for (int s = 1; s < num_sectors(type, fmt(type)->second_bam_track); s++) {
+                mark_sector(type, image, fmt(type)->second_bam_track, s, 0 /* not free */);
             }
         }
     } else if (type == IMAGE_D81) {
@@ -778,8 +785,8 @@ validate(image_type type, unsigned char* image)
     atab[linear_sector(type, dirtrack(type), 0)] = ALLOCATED;
     if (type == IMAGE_D71) {
         /* mark full track of second BAM as allocated */
-        for (int s = 0; s < num_sectors(type, dirtrack(type) + D64NUMTRACKS); s++) {
-            atab[linear_sector(type, dirtrack(type) + D64NUMTRACKS, s)] = ALLOCATED;
+        for (int s = 0; s < num_sectors(type, fmt(type)->second_bam_track); s++) {
+            atab[linear_sector(type, fmt(type)->second_bam_track, s)] = ALLOCATED;
         }
     }
     if(type == IMAGE_D81) {
