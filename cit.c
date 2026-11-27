@@ -52,11 +52,15 @@ usage(void)
 {
     printf("\n*** This is CIT (Commodore Image Tools) version " VERSION " built on " __DATE__ " ***\n");
     printf("*** based on cc1541 4.2 by JackAsser, Krill, Claus and Bjoern Esser ***\n\n");
-    printf("Usage: cit [options] image.[d64|d71|d81]\n\n");
+    printf("Usage: cit [options] image.[d64|d71|d81|d80|d82]\n\n");
     printf("Disk Related:\n");
     printf("============\n");
     printf("-n diskname   Disk name, default='cit'.\n");
     printf("-i id         Disk ID, default='00 2a'.\n");
+    printf("-D format     Image format, overrides the file name extension:\n");
+    printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
+    printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
+    printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
     printf("-4            Use tracks 35-40 with SPEED DOS BAM formatting.\n");
     printf("-5            Use tracks 35-40 with DOLPHIN DOS BAM formatting.\n");
     printf("-d track      Maintain a shadow directory (copy of the actual directory without\n");
@@ -719,8 +723,8 @@ check_bam(image_type type, const unsigned char* image)
             }
         }
 
-        if (type == IMAGE_D71) {
-            for (int i = num_sectors(type, t); i < 23; i++) {
+        if (fmt(type)->sides == 2) {
+            for (int i = num_sectors(type, t); i < max_sectors(type) + 2; i++) {
                 if (verbose) {
                     printf(" ");
                 }
@@ -1652,6 +1656,9 @@ main(int argc, char* argv[])
 
     /* flags to detect illegal settings */
     int transwarp_set = 0;
+    int format_choice = -1;           /* -D: image type, -1 = from the file name */
+    bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
+    bool id_set = false;
     int sector_interleave_set = 0;
     int default_sector_interleave_set = 0;
     int file_start_sector_set = 0;
@@ -1690,6 +1697,7 @@ main(int argc, char* argv[])
                 return -1;
             }
             id = (unsigned char*)argv[++j];
+            id_set = true;
             set_header = 1;
             modified = 1;
         } else if (strcmp(argv[j], "-H") == 0) {
@@ -1771,7 +1779,7 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Error parsing argument for -b\n");
                 return -1;
             }
-            if ((i < 0) || (i >= num_sectors(IMAGE_D64, 1))) { /* same for all applicable images, so simply use D64 */
+            if ((i < 0) || (i >= MAXSECTORS)) { /* checked against the image type later */
                 fprintf(stderr, "ERROR: Invalid beginning sector %d specified\n", i);
                 return -1;
             }
@@ -1947,6 +1955,29 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "-D") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for -D\n");
+                return -1;
+            }
+            const char *f = argv[++j];
+            if (strcasecmp(f, "d40") == 0) {
+                format_choice = IMAGE_D64;
+                d40 = true;
+            } else if (strcasecmp(f, "d41") == 0 || strcasecmp(f, "d64") == 0) {
+                format_choice = IMAGE_D64;
+            } else if (strcasecmp(f, "d71") == 0) {
+                format_choice = IMAGE_D71;
+            } else if (strcasecmp(f, "d81") == 0) {
+                format_choice = IMAGE_D81;
+            } else if (strcasecmp(f, "d80") == 0) {
+                format_choice = IMAGE_D80;
+            } else if (strcasecmp(f, "d82") == 0) {
+                format_choice = IMAGE_D82;
+            } else {
+                fprintf(stderr, "ERROR: Unknown image format %s for -D\n", f);
+                return -1;
+            }
         } else if (strcmp(argv[j], "-4") == 0) {
             type = IMAGE_D64_EXTENDED_SPEED_DOS;
             modified = 1;
@@ -2026,21 +2057,48 @@ main(int argc, char* argv[])
     }
     imagepath = argv[argc-1];
 
-    if (strlen(imagepath) >= 4) {
-        if (strcmp(imagepath + strlen(imagepath) - 4, ".d71") == 0) {
-            if ((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) {
-                fprintf(stderr, "ERROR: Extended .d71 images are not supported\n");
-                return -1;
-            }
-            type = IMAGE_D71;
-        } else if (strcmp(imagepath + strlen(imagepath) - 4, ".d81") == 0) {
-            if ((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) {
-                fprintf(stderr, "ERROR: Extended .d81 images are not supported\n");
-                return -1;
-            }
-            type = IMAGE_D81;
-            dir_sector_interleave = 1;
+    bool extended = (type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS);
+    if (format_choice >= 0) {
+        if (extended && (format_choice != IMAGE_D64 || d40)) {
+            fprintf(stderr, "ERROR: -4 and -5 are only supported for D41 (1541) images\n");
+            return -1;
         }
+        if (!extended) {
+            type = format_choice;
+        }
+    } else if (strlen(imagepath) >= 4) {
+        const char *ext = imagepath + strlen(imagepath) - 4;
+        int t = -1;
+        if (strcasecmp(ext, ".d71") == 0) {
+            t = IMAGE_D71;
+        } else if (strcasecmp(ext, ".d81") == 0) {
+            t = IMAGE_D81;
+        } else if (strcasecmp(ext, ".d80") == 0) {
+            t = IMAGE_D80;
+        } else if (strcasecmp(ext, ".d82") == 0) {
+            t = IMAGE_D82;
+        }
+        if (t >= 0) {
+            if (extended) {
+                fprintf(stderr, "ERROR: Extended %s images are not supported\n", ext);
+                return -1;
+            }
+            type = t;
+        }
+    }
+    dir_sector_interleave = fmt(type)->dir_interleave;
+    if (!id_set) {
+        id = (unsigned char*)fmt(type)->default_id;
+    }
+    for (int k = 0; k < num_files; k++) {
+        if (files[k].start_sector_set && files[k].start_sector >= max_sectors(type)) {
+            fprintf(stderr, "ERROR: Invalid beginning sector %d specified\n", files[k].start_sector);
+            return -1;
+        }
+    }
+    if (d40 && transwarp_set) {
+        fprintf(stderr, "ERROR: Transwarp is not supported for D40 (2031/4040) images\n");
+        return -1;
     }
 
     if(type != IMAGE_D71 && cluster_optimized) {

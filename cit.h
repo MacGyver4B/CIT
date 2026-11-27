@@ -37,6 +37,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>   /* strcasecmp */
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -187,7 +188,9 @@ typedef enum {
     IMAGE_D64_EXTENDED_SPEED_DOS,
     IMAGE_D64_EXTENDED_DOLPHIN_DOS,
     IMAGE_D71,
-    IMAGE_D81
+    IMAGE_D81,
+    IMAGE_D80,
+    IMAGE_D82
 } image_type;
 
 
@@ -211,12 +214,17 @@ typedef struct {
     } zone[MAXZONES];
     int dir_track;              /* track with header, BAM and directory */
     int first_dir_sector;       /* first directory sector on dir_track */
-    int last_bam_sector;        /* header and BAM: sectors 0..last_bam_sector */
     int dir_interleave;         /* default interleave of directory sectors */
     int header_offset;          /* disk name in the header sector */
     int id_offset;              /* disk id (5 bytes incl. dos type) */
     unsigned char dos_type;     /* format byte at offset 2, 0 = not checked */
     int second_bam_track;       /* 1571: BAM of the second side (track 53), 0 = none */
+    int num_bam_blocks;         /* BAM blocks besides the header (dir_track/0) */
+    struct {
+        int track;
+        int sector;
+    } bam_block[4];
+    const char *default_id;     /* disk id incl. DOS version, hex escapes allowed */
 } format_t;
 
 /* cit.c: global settings */
@@ -255,6 +263,9 @@ unsigned int image_size(image_type type);
 int dirtrack(image_type type);
 int first_dir_sector(image_type type);
 int side_tracks(image_type type);
+bool is_system_block(image_type type, int track, int sector);
+int get_bam_offset(image_type type, unsigned int track);
+int get_bam_count_offset(image_type type, unsigned int track);
 int linear_sector(image_type type, int track, int sector);
 int is_sector_free(image_type type, const unsigned char* image, int track, int sector, int numdirblocks, int dir_sector_interleave);
 void mark_sector(image_type type, unsigned char* image, int track, int sector, int free);

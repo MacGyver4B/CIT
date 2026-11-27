@@ -234,13 +234,11 @@ static int
 undelete_wild(image_type type, unsigned char* image, char* atab, int level, imagefile files[])
 {
     int num_undeleted = 0;
-    int max_bam_sector = fmt(type)->last_bam_sector;
-    unsigned int dt = dirtrack(type);
     /* search for well terminated sector chains */
     for(unsigned int t = 1; t <= image_num_tracks(type); t++) {
         for(int s = 0; s < num_sectors(type, t); s++) {
             int b = linear_sector(type, t, s);
-            if(atab[b] == UNALLOCATED && (t != dt || s > max_bam_sector)) { /* ignore bam sectors */
+            if(atab[b] == UNALLOCATED && !is_system_block(type, t, s)) { /* ignore header and BAM */
                 unsigned int last_track;
                 int last_sector;
                 int error = validate_sector_chain(type, image, atab, t, s, &last_track, &last_sector);
@@ -303,13 +301,11 @@ static int
 undelete_fix_wild(image_type type, unsigned char* image, char* atab, imagefile files[])
 {
     int num_undeleted = 0;
-    int max_bam_sector = fmt(type)->last_bam_sector;
-    unsigned int dt = dirtrack(type);
     /* search for broken sector chains */
     for(unsigned int t = 1; t <= image_num_tracks(type); t++) {
         for(int s = 0; s < num_sectors(type, t); s++) {
             int b = linear_sector(type, t, s);
-            if(atab[b] == UNALLOCATED && (t != dt || s > max_bam_sector)) { /* ignore bam sectors */
+            if(atab[b] == UNALLOCATED && !is_system_block(type, t, s)) { /* ignore header and BAM */
                 unsigned int last_track;
                 int last_sector;
                 int error = validate_sector_chain(type, image, atab, t, s, &last_track, &last_sector);

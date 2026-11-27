@@ -30,26 +30,62 @@ static const char *error_name[] = {
 
 static const format_t formats[] = {
     [IMAGE_D64] = {
-        "D64", 35, 1, {{17, 21}, {24, 19}, {30, 18}, {35, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0x41, 0
+        .name = "D64", .num_tracks = 35, .sides = 1,
+        .zone = {{17, 21}, {24, 19}, {30, 18}, {35, 17}},
+        .dir_track = 18, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x90, .id_offset = 0xa2, .dos_type = 'A',
+        .default_id = "00#a02a"
     },
     [IMAGE_D64_EXTENDED_SPEED_DOS] = {
-        "D64 (40 tracks, SpeedDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0, 0
+        .name = "D64 (40 tracks, SpeedDOS BAM)", .num_tracks = 40, .sides = 1,
+        .zone = {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
+        .dir_track = 18, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x90, .id_offset = 0xa2, .dos_type = 0,
+        .default_id = "00#a02a"
     },
     [IMAGE_D64_EXTENDED_DOLPHIN_DOS] = {
-        "D64 (40 tracks, DolphinDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0, 0
+        .name = "D64 (40 tracks, DolphinDOS BAM)", .num_tracks = 40, .sides = 1,
+        .zone = {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
+        .dir_track = 18, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x90, .id_offset = 0xa2, .dos_type = 0,
+        .default_id = "00#a02a"
     },
     [IMAGE_D71] = {
-        "D71", 70, 2, {{17, 21}, {24, 19}, {30, 18}, {35, 17}, {52, 21}, {59, 19}, {65, 18}, {70, 17}},
-        18, 1, 0, 3, 0x90, 0xa2, 0x41, 53
+        .name = "D71", .num_tracks = 70, .sides = 2,
+        .zone = {{17, 21}, {24, 19}, {30, 18}, {35, 17}, {52, 21}, {59, 19}, {65, 18}, {70, 17}},
+        .dir_track = 18, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x90, .id_offset = 0xa2, .dos_type = 'A',
+        .second_bam_track = 53, .num_bam_blocks = 1, .bam_block = {{53, 0}},
+        .default_id = "00#a02a"
     },
     [IMAGE_D81] = {
-        "D81", 80, 1, {{80, 40}},
-        40, 3, 2, 1, 0x04, 0x16, 0x44, 0
+        .name = "D81", .num_tracks = 80, .sides = 1,
+        .zone = {{80, 40}},
+        .dir_track = 40, .first_dir_sector = 3, .dir_interleave = 1,
+        .header_offset = 0x04, .id_offset = 0x16, .dos_type = 'D',
+        .num_bam_blocks = 2, .bam_block = {{40, 1}, {40, 2}},
+        .default_id = "00#a02a"   /* as cc1541; the 1581 itself writes "3D" */
+    },
+    /* 8050 and 8250/SFD-1001 (DOS 2.7): header 39/0, BAM on track 38 (one
+       block per 50 tracks), directory from 39/1 with interleave 3 */
+    [IMAGE_D80] = {
+        .name = "D80", .num_tracks = 77, .sides = 1,
+        .zone = {{39, 29}, {53, 27}, {64, 25}, {77, 23}},
+        .dir_track = 39, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x06, .id_offset = 0x18, .dos_type = 'C',
+        .num_bam_blocks = 2, .bam_block = {{38, 0}, {38, 3}},
+        .default_id = "00#a02c"
+    },
+    [IMAGE_D82] = {
+        .name = "D82", .num_tracks = 154, .sides = 2,
+        .zone = {{39, 29}, {53, 27}, {64, 25}, {77, 23}, {116, 29}, {130, 27}, {141, 25}, {154, 23}},
+        .dir_track = 39, .first_dir_sector = 1, .dir_interleave = 3,
+        .header_offset = 0x06, .id_offset = 0x18, .dos_type = 'C',
+        .num_bam_blocks = 4, .bam_block = {{38, 0}, {38, 3}, {38, 6}, {38, 9}},
+        .default_id = "00#a02c"
     },
 };
+
 
 const format_t *
 fmt(image_type type)
@@ -122,6 +158,21 @@ side_tracks(image_type type)
     return fmt(type)->num_tracks / fmt(type)->sides;
 }
 
+/* Header (dir_track/0) or BAM block: not part of any file */
+bool
+is_system_block(image_type type, int track, int sector)
+{
+    if (track == dirtrack(type) && sector == 0) {
+        return true;
+    }
+    for (int i = 0; i < fmt(type)->num_bam_blocks; i++) {
+        if (track == fmt(type)->bam_block[i].track && sector == fmt(type)->bam_block[i].sector) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Returns the first directory sector on the directory track */
 int
 first_dir_sector(image_type type)
@@ -151,42 +202,87 @@ linear_sector(image_type type, int track, int sector)
     return linear_sector;
 }
 
-/* Returns the image offset of the bam entry for a given track */
-static int
-get_bam_offset(image_type type, unsigned int track)
+/*
+ * BAM entry of a track: offset of the number of free sectors and offset of
+ * the bitmap (bit set = sector free, sector 0 = bit 0 of the first byte).
+ *
+ *   D64 (1541/2031/4040)  18/0, 4 bytes per track from offset 4
+ *   D64 40 tracks         tracks 36-40 in 18/0 from $c0 (SpeedDOS) or $ac (DolphinDOS)
+ *   D71 (1571)            side 2: counters in 18/0 from $dd, bitmaps (3 bytes) in 53/0
+ *   D81 (1581)            40/1 (tracks 1-40) and 40/2 (41-80), 6 bytes per track from $10
+ *   D80/D82 (8050/8250)   track 38, sectors 0, 3, 6, 9 for 50 tracks each,
+ *                         5 bytes per track from offset 6
+ */
+static void
+bam_entry(image_type type, int track, int *count, int *bitmap)
 {
     int bam;
-    unsigned int offset;
 
-    if (type == IMAGE_D81) {
-        if (track <= 40) {
-            bam = linear_sector(type, dirtrack(type), 1 /* sector */) * BLOCKSIZE;
-            offset = bam + (track * 6) + 11;
-        } else {
-            bam = linear_sector(type, dirtrack(type), 2 /* sector */) * BLOCKSIZE;
-            offset = bam + ((track - 40) * 6) + 11;
-        }
-    } else if ((type == IMAGE_D71) && (track > D64NUMTRACKS)) {
-        /* access second side bam */
-        bam = linear_sector(type, dirtrack(type) + D64NUMTRACKS, 0) * BLOCKSIZE;
-        offset = bam + (track - D64NUMTRACKS - 1) * 3;
-    } else {
-        if (((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) && (track > D64NUMTRACKS)) {
-            track -= D64NUMTRACKS;
-            bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE + ((type == IMAGE_D64_EXTENDED_SPEED_DOS) ? BAM_OFFSET_SPEED_DOS : BAM_OFFSET_DOLPHIN_DOS);
-        } else {
+    switch (type) {
+    case IMAGE_D81:
+        bam = linear_sector(type, dirtrack(type), (track <= 40) ? 1 : 2) * BLOCKSIZE;
+        *count = bam + 0x10 + ((track - 1) % 40) * 6;
+        *bitmap = *count + 1;
+        return;
+
+    case IMAGE_D80:
+    case IMAGE_D82:
+        bam = linear_sector(type, 38, 3 * ((track - 1) / 50)) * BLOCKSIZE;
+        *count = bam + 6 + ((track - 1) % 50) * 5;
+        *bitmap = *count + 1;
+        return;
+
+    case IMAGE_D71:
+        if (track > side_tracks(type)) {
             bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+            *count = bam + 0xdd + track - side_tracks(type) - 1;
+            *bitmap = linear_sector(type, fmt(type)->second_bam_track, 0) * BLOCKSIZE
+                      + (track - side_tracks(type) - 1) * 3;
+            return;
         }
-        offset = bam + track * 4 + 1;
+        break;
+
+    case IMAGE_D64_EXTENDED_SPEED_DOS:
+    case IMAGE_D64_EXTENDED_DOLPHIN_DOS:
+        if (track > D64NUMTRACKS) {
+            bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE
+                  + ((type == IMAGE_D64_EXTENDED_SPEED_DOS) ? BAM_OFFSET_SPEED_DOS : BAM_OFFSET_DOLPHIN_DOS);
+            *count = bam + (track - D64NUMTRACKS - 1) * 4;
+            *bitmap = *count + 1;
+            return;
+        }
+        break;
+
+    default:
+        break;
     }
-    return offset;
+    bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    *count = bam + track * 4;
+    *bitmap = *count + 1;
+}
+
+/* Returns the image offset of the bam bitmap for a given track */
+int
+get_bam_offset(image_type type, unsigned int track)
+{
+    int count, bitmap;
+    bam_entry(type, track, &count, &bitmap);
+    return bitmap;
+}
+
+/* Returns the image offset of the number of free sectors for a given track */
+int
+get_bam_count_offset(image_type type, unsigned int track)
+{
+    int count, bitmap;
+    bam_entry(type, track, &count, &bitmap);
+    return count;
 }
 
 /* Checks if a given sector is marked as free in the BAM and also not used by directory */
 int
 is_sector_free(image_type type, const unsigned char* image, int track, int sector, int numdirblocks, int dir_sector_interleave)
 {
-    int bam;
     const unsigned char* bitmap;
 
     if (sector < 0) {
@@ -195,27 +291,7 @@ is_sector_free(image_type type, const unsigned char* image, int track, int secto
         exit(-1);
     }
 
-    if (type == IMAGE_D81) {
-        if (track <= 40) {
-            bam = linear_sector(type, dirtrack(type), 1 /* sector */) * BLOCKSIZE;
-            bitmap = image + bam + (track * 6) + 11;
-        } else {
-            bam = linear_sector(type, dirtrack(type), 2 /* sector */) * BLOCKSIZE;
-            bitmap = image + bam + ((track - 40) * 6) + 11;
-        }
-    } else if ((type == IMAGE_D71) && (track > D64NUMTRACKS)) {
-        /* access second side bam */
-        bam = linear_sector(type, dirtrack(type) + D64NUMTRACKS, 0) * BLOCKSIZE;
-        bitmap = image + bam + (track - D64NUMTRACKS - 1) * 3;
-    } else {
-        if (((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) && (track > D64NUMTRACKS)) {
-            track -= D64NUMTRACKS+1;
-            bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE + ((type == IMAGE_D64_EXTENDED_SPEED_DOS) ? BAM_OFFSET_SPEED_DOS : BAM_OFFSET_DOLPHIN_DOS);
-        } else {
-            bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
-        }
-        bitmap = image + bam + (track * 4) + 1;
-    }
+    bitmap = image + get_bam_offset(type, track);
 
     int byte = sector >> 3;
     int bit = sector & 7;
@@ -254,50 +330,14 @@ void
 mark_sector(image_type type, unsigned char* image, int track, int sector, int free)
 {
     if (free != is_sector_free(type, image, track, sector, 0, 0)) {
-        int bam;
-        unsigned char* bitmap;
-        if (type == IMAGE_D81) {
-            if (track <= 40) {
-                bam = linear_sector(type, dirtrack(type), 1 /* sector */) * BLOCKSIZE;
-                bitmap = image + bam + (track * 6) + 11;
-            } else {
-                bam = linear_sector(type, dirtrack(type), 2 /* sector */) * BLOCKSIZE;
-                bitmap = image + bam + ((track - 40) * 6) + 11;
-            }
+        unsigned char* count = image + get_bam_count_offset(type, track);
+        unsigned char* bitmap = image + get_bam_offset(type, track);
 
-            /* update number of free sectors on track */
-            if (free) {
-                ++bitmap[-1];
-            } else {
-                --bitmap[-1];
-            }
-        } else if ((type == IMAGE_D71) && (track > D64NUMTRACKS)) {
-            /* update number of free sectors on track */
-            bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
-            if (free) {
-                image[bam + 0xdd + track - D64NUMTRACKS - 1]++;
-            } else {
-                image[bam + 0xdd + track - D64NUMTRACKS - 1]--;
-            }
-
-            /* access bitmap on second side bam */
-            bam = linear_sector(type, dirtrack(type) + D64NUMTRACKS, 0) * BLOCKSIZE;
-            bitmap = image + bam + (track - D64NUMTRACKS - 1) * 3;
+        /* update number of free sectors on track */
+        if (free) {
+            ++*count;
         } else {
-            if (((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) && (track > D64NUMTRACKS)) {
-                track -= D64NUMTRACKS+1;
-                bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE + ((type == IMAGE_D64_EXTENDED_SPEED_DOS) ? BAM_OFFSET_SPEED_DOS : BAM_OFFSET_DOLPHIN_DOS);
-            } else {
-                bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
-            }
-            bitmap = image + bam + (track * 4) + 1;
-
-            /* update number of free sectors on track */
-            if (free) {
-                ++image[bam + (track * 4)];
-            } else {
-                --image[bam + (track * 4)];
-            }
+            --*count;
         }
 
         /* update bitmap */
@@ -407,6 +447,27 @@ initialize_directory(image_type type, unsigned char* image, unsigned char* heade
         image[bam + 0x02] = 0x44;
         image[bam + 0x03] = 0xbb;
         image[bam + 0x06] = 0xc0;
+    } else if (type == IMAGE_D80 || type == IMAGE_D82) {
+        /* header 39/0 links to the first BAM block */
+        image[dir + 0x00] = fmt(type)->bam_block[0].track;
+        image[dir + 0x01] = fmt(type)->bam_block[0].sector;
+        image[dir + 0x02] = fmt(type)->dos_type;
+        image[dir + 0x16] = FILENAMEEMPTYCHAR;
+        image[dir + 0x17] = FILENAMEEMPTYCHAR;
+        for (int i = 0x1d; i <= 0x20; i++) {
+            image[dir + i] = FILENAMEEMPTYCHAR;
+        }
+        /* BAM blocks: link, 'C', 0, first track, last track + 1;
+           the last one links to the first directory block */
+        int n = fmt(type)->num_bam_blocks;
+        for (int i = 0; i < n; i++) {
+            unsigned int bam = linear_sector(type, fmt(type)->bam_block[i].track, fmt(type)->bam_block[i].sector) * BLOCKSIZE;
+            image[bam + 0x00] = (i + 1 < n) ? fmt(type)->bam_block[i + 1].track : dirtrack(type);
+            image[bam + 0x01] = (i + 1 < n) ? fmt(type)->bam_block[i + 1].sector : first_dir_sector(type);
+            image[bam + 0x02] = fmt(type)->dos_type;
+            image[bam + 0x04] = i * 50 + 1;
+            image[bam + 0x05] = min((i + 1) * 50, (int)image_num_tracks(type)) + 1;
+        }
     } else {
         image[dir + 0x00] = dirtrack(type);
         image[dir + 0x01] = 1;
@@ -438,9 +499,10 @@ initialize_directory(image_type type, unsigned char* image, unsigned char* heade
                 mark_sector(type, image, fmt(type)->second_bam_track, s, 0 /* not free */);
             }
         }
-    } else if (type == IMAGE_D81) {
-        mark_sector(type, image, dirtrack(type), 1 /* sector */, 0 /* not free */);
-        mark_sector(type, image, dirtrack(type), 2 /* sector */, 0 /* not free */);
+    } else {
+        for (int i = 0; i < fmt(type)->num_bam_blocks; i++) {
+            mark_sector(type, image, fmt(type)->bam_block[i].track, fmt(type)->bam_block[i].sector, 0 /* not free */);
+        }
     }
 
     /* first dir block */
@@ -783,16 +845,14 @@ validate(image_type type, unsigned char* image)
     /* check each directory entry and set block allocation table */
     /* set BAM sector as allocated */
     atab[linear_sector(type, dirtrack(type), 0)] = ALLOCATED;
-    if (type == IMAGE_D71) {
-        /* mark full track of second BAM as allocated */
+    for (int i = 0; i < fmt(type)->num_bam_blocks; i++) {
+        atab[linear_sector(type, fmt(type)->bam_block[i].track, fmt(type)->bam_block[i].sector)] = ALLOCATED;
+    }
+    if (fmt(type)->second_bam_track) {
+        /* 1571: the whole track of the second BAM is allocated */
         for (int s = 0; s < num_sectors(type, fmt(type)->second_bam_track); s++) {
             atab[linear_sector(type, fmt(type)->second_bam_track, s)] = ALLOCATED;
         }
-    }
-    if(type == IMAGE_D81) {
-        /* mark additional BAM sectors as allocated */
-        atab[linear_sector(type, dirtrack(type), 1)] = ALLOCATED;
-        atab[linear_sector(type, dirtrack(type), 2)] = ALLOCATED;
     }
     unsigned int dt = dirtrack(type);
     int dirsector = first_dir_sector(type);
@@ -866,11 +926,7 @@ validate(image_type type, unsigned char* image)
                 exit(-1);
             }
         }
-        if (type != IMAGE_D71 || t <= 35) {
-            exp_free = *(bitmap - 1);
-        } else {
-            exp_free = image[linear_sector(type, dirtrack(type), 0) * BLOCKSIZE + 0xdd + t - D64NUMTRACKS - 1];
-        }
+        exp_free = image[get_bam_count_offset(type, t)];
         if (exp_free != num_free) {
             fprintf(stderr, "ERROR: validation failed, BAM number of free blocks (%d) is not consistent with bitmap (%#02x%#02x%#02x) for track %u\n", exp_free, *bitmap, *(bitmap + 1), *(bitmap + 2), t);
             exit(-1);
