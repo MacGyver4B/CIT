@@ -73,7 +73,7 @@ usage(void)
     printf("              or -D is given. Not copied (with a warning): REL files into\n");
     printf("              images, GEOS files, used blocks of no file, error tables.\n");
     printf("--config file Settings file instead of cit.ini (next to the program, or\n");
-    printf("              %%APPDATA%%\\cit, ~/.config/cit): petcat, alloc.new, alloc.existing,\n");
+    printf("              %%APPDATA%%\\cit, ~/.config/cit): petcat, 7z, alloc.new, alloc.existing,\n");
     printf("              disk.name; the command line wins.\n");
     printf("--dirpos name n  Swap the directory entry of name with entry n (1: the \"*\"\n");
     printf("              file); for new files with --alloc auto, n = 1 also places\n");

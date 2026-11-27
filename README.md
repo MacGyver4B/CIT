@@ -177,6 +177,7 @@ file found is used: `--config file`, `cit.ini` next to the program
 ```
 ; tools
 petcat = C:\VICE\bin\petcat.exe   ; for -XA, else searched in PATH
+7z     = C:\Program Files\7-Zip\7z.exe   ; for .zip/.7z archives (planned)
 
 ; defaults
 alloc.new      = auto            ; strategy for a new image

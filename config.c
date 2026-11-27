@@ -12,6 +12,7 @@
  * line always wins over the file, the file over the built-in defaults.
  *
  *   petcat         = path of petcat (VICE), for -XA
+ *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files
  *   disk.name      = disk name without -n
@@ -21,7 +22,7 @@
 
 #include "cit.h"
 
-cit_config config = { NULL, -1, -1, NULL, NULL };
+cit_config config = { NULL, NULL, -1, -1, NULL, NULL };
 
 static char *
 copy_string(const char *s)
@@ -92,6 +93,8 @@ read_config(const char *path)
         }
         if (strcasecmp(key, "petcat") == 0) {
             config.petcat = copy_string(value);
+        } else if (strcasecmp(key, "7z") == 0) {
+            config.sevenzip = copy_string(value);
         } else if (strcasecmp(key, "alloc.new") == 0 || strcasecmp(key, "alloc.existing") == 0) {
             int a = alloc_from_name(value);
             if (a < 0) {
