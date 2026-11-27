@@ -61,9 +61,13 @@ usage(void)
     printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
-    printf("--alloc mode  Block allocation: cc1541 (default, from track 1 upwards)\n");
-    printf("              or dos (as the drive: from the directory track outwards,\n");
-    printf("              sector increment of the drive's DOS).\n");
+    printf("--alloc mode  Block allocation:\n");
+    printf("              cc1541  from track 1 upwards (default)\n");
+    printf("              dos     as the drive: from the directory track outwards\n");
+    printf("              auto    first file next to the directory track, large files\n");
+    printf("                      on whole tracks from the outside, small files into\n");
+    printf("                      the best fitting gap; dos and auto use the sector\n");
+    printf("                      increment of the drive's DOS\n");
     printf("-4            Use tracks 35-40 with SPEED DOS BAM formatting.\n");
     printf("-5            Use tracks 35-40 with DOLPHIN DOS BAM formatting.\n");
     printf("-d track      Maintain a shadow directory (copy of the actual directory without\n");
@@ -916,6 +920,30 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
         }
     }
 
+    ts_block **plan = NULL;
+    if (alloc_mode == ALLOC_AUTO) {
+        int *num_blocks = calloc(num_files, sizeof(int));
+        if (num_blocks == NULL) {
+            fprintf(stderr, "ERROR: Memory allocation error\n");
+            exit(-1);
+        }
+        for (int i = 0; i < num_files; i++) {
+            struct stat st;
+            if (!files[i].no_file && !files[i].loop_file && stat((const char *)files[i].alocalname, &st) == 0) {
+                num_blocks[i] = (int)((st.st_size + BLOCKSIZE - BLOCKOVERHEAD - 1) / (BLOCKSIZE - BLOCKOVERHEAD));
+            }
+        }
+        /* the "*" file: first directory entry of the image */
+        int star_file = -1;
+        for (int i = 0; i < num_files; i++) {
+            if (files[i].direntryindex == 0) {
+                star_file = i;
+            }
+        }
+        plan = auto_plan(type, image, files, num_files, num_blocks, star_file);
+        free(num_blocks);
+    }
+
     for (int i = 0; i < num_files; i++) {
         imagefile *file = files + allocation_order[i];
         unsigned char track = 1; /* reset start search track for every file, as Transwarp and -r might leave free blocks below */
@@ -1133,7 +1161,12 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                 int blockfound = 0;
                 int findSector = 0;
 
-                if (alloc_mode == ALLOC_DOS) {
+                if (alloc_mode == ALLOC_AUTO) {
+                    ts_block b = plan[file - files][file->nrSectors];
+                    track = b.track;
+                    findSector = b.sector;
+                    blockfound = 1;
+                } else if (alloc_mode == ALLOC_DOS) {
                     int t = track;
                     int sec = sector;
                     bool ok = (bytesLeft == fileSize) ? dos_first_block(type, image, &t, &sec)
@@ -1270,7 +1303,7 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                     exit(-1);
                 }
 
-                if (alloc_mode != ALLOC_DOS) { /* the DOS adds its increment itself */
+                if (alloc_mode == ALLOC_CC1541) { /* dos and auto choose every sector themselves */
                     sector += abs(file->sectorInterleave);
                     sector %= num_sectors(type, track);
                 }
@@ -1477,6 +1510,12 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                 exit(-1);
             }
         }
+    }
+    if (plan != NULL) {
+        for (int i = 0; i < num_files; i++) {
+            free(plan[i]);
+        }
+        free(plan);
     }
     free(allocation_order);
 }
@@ -1985,6 +2024,8 @@ main(int argc, char* argv[])
             const char *m = argv[++j];
             if (strcasecmp(m, "dos") == 0) {
                 alloc_mode = ALLOC_DOS;
+            } else if (strcasecmp(m, "auto") == 0) {
+                alloc_mode = ALLOC_AUTO;
             } else if (strcasecmp(m, "cc1541") == 0) {
                 alloc_mode = ALLOC_CC1541;
             } else {
@@ -2158,16 +2199,16 @@ main(int argc, char* argv[])
             return -1;
         }
     }
-    if (alloc_mode == ALLOC_DOS) {
-        /* the cc1541 placement options have no meaning for the DOS strategy */
+    if (alloc_mode != ALLOC_CC1541) {
+        /* the cc1541 placement options have no meaning for the dos and auto strategies */
         if (transwarp_set || usedirtrack || shadowdirtrack || !dirtracksplit) {
-            fprintf(stderr, "ERROR: Transwarp, -t, -d and -x do not work with --alloc dos\n");
+            fprintf(stderr, "ERROR: Transwarp, -t, -d and -x only work with --alloc cc1541\n");
             return -1;
         }
         for (int k = 0; k < num_files; k++) {
             if (files[k].start_sector_set || files[k].save_to_empty_track || files[k].fit_on_single_track
                     || files[k].min_track > 0 || files[k].cluster_optimized) {
-                fprintf(stderr, "ERROR: -b, -e, -E, -r and -c do not work with --alloc dos\n");
+                fprintf(stderr, "ERROR: -b, -e, -E, -r and -c only work with --alloc cc1541\n");
                 return -1;
             }
         }

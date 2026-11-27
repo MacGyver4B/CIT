@@ -268,9 +268,17 @@ int side_tracks(image_type type);
 /* block allocation strategy (--alloc) */
 typedef enum {
     ALLOC_CC1541,               /* as cc1541: from track 1 upwards */
-    ALLOC_DOS                   /* as the drive's DOS: from the directory track outwards */
+    ALLOC_DOS,                  /* as the drive's DOS: from the directory track outwards */
+    ALLOC_AUTO                  /* planned, see alloc.c */
 } alloc_mode_t;
 extern alloc_mode_t alloc_mode;
+typedef struct {
+    unsigned char track;
+    unsigned char sector;
+} ts_block;
+int dos_free_blocks(image_type type, const unsigned char *image, int track);
+int dos_getsec(image_type type, const unsigned char *image, int track, int start);
+ts_block **auto_plan(image_type type, const unsigned char *image, imagefile *files, int num_files, const int *num_blocks, int star_file);
 bool dos_first_block(image_type type, const unsigned char *image, int *track, int *sector);
 bool dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment);
 bool is_system_block(image_type type, int track, int sector);

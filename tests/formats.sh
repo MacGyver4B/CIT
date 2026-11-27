@@ -38,10 +38,11 @@ offset() { # track sector sectors-per-track-of-zones...  (zone list: last:sector
 
 # name image big-blocks id-offset id-expected bam-bitmap-offset
 check_format() {
-    name=$1; img=$2; big=$3; idoff=$4; idexp=$5; bamoff=$6
+    name="$1${ALLOC:+ $ALLOC}"; img=$2; big=$3; idoff=$4; idexp=$5; bamoff=$6
     head -c $((big * 254)) /dev/urandom > big
     rm -f "$img"
-    if ! "$CIT" -n test -i "$ID" -f eins -w s1 -f zwei -w s30 -f drei -w s200 -f gross -w big "$img" > log 2>&1; then
+    # shellcheck disable=SC2086
+    if ! "$CIT" $ALLOC -n test -i "$ID" -f eins -w s1 -f zwei -w s30 -f drei -w s200 -f gross -w big "$img" > log 2>&1; then
         bad "$name: writing failed"; cat log; return
     fi
     if "$CIT" -V "$img" > log 2>&1; then ok; else bad "$name: -V failed"; cat log; fi
@@ -64,6 +65,8 @@ D64Z="17:21 24:19 30:18 35:17"
 D80Z="39:29 53:27 64:25 77:23"
 D82Z="$D80Z 116:29 130:27 141:25 154:23"
 
+# all checks once per allocation strategy
+for ALLOC in "" "--alloc dos" "--alloc auto"; do
 # ids are given in ASCII, cit stores PETSCII ("ab" = 41 42)
 # D41: 5 character id kept; BAM 18/0, track 35 bitmap
 ID=abcde check_format d41 t.d64 400 $(( $(offset 18 0 $D64Z) + 0xa2 )) 4142434445 \
@@ -80,13 +83,14 @@ ID=ab check_format d80 t.d80 1700 $(( $(offset 39 0 $D80Z) + 0x18 )) 4142a03243 
 # D82: big file reaches side 2; track 154 bitmap in 38/9
 ID=ab check_format d82 t.d82 2200 $(( $(offset 39 0 $D82Z) + 0x18 )) 4142a03243 \
     $(( $(offset 38 9 $D82Z) + 6 + 3 * 5 + 1 ))
+done
 
 # --alloc dos must place every block like the drive. References: images that
 # the real DOS wrote in VICE (4040, 1541, 1571, 1581, 8050, 8250) were byte
 # identical to these cit images (unused tail of the last block ignored).
 # Files f01..f13 of 1, 2, 3, 5, ... 233 and <big> blocks, each filled with
 # one byte value (65 + n); <minus> bytes less than full blocks.
-dos_ref() { # name image big minus expected-cksum
+dos_ref() { # image big minus expected-cksum [strategy]
     rm -rf dosref && mkdir dosref && cd dosref || exit 2
     i=0; args=""
     for b in 1 2 3 5 8 13 21 34 55 89 144 233 "$2"; do
@@ -96,9 +100,9 @@ dos_ref() { # name image big minus expected-cksum
         args="$args -f $n -w $n"
     done
     # shellcheck disable=SC2086
-    "$CIT" --alloc dos -n test -i ab $args "$1" > /dev/null 2>&1
+    "$CIT" --alloc "${5:-dos}" -n test -i ab $args "$1" > /dev/null 2>&1
     got=$(cksum < "$1" | cut -d' ' -f1)
-    if [ "$got" = "$4" ]; then ok; else bad "--alloc dos $1: cksum $got, expected $4 (drive layout)"; fi
+    if [ "$got" = "$4" ]; then ok; else bad "--alloc ${5:-dos} $1: cksum $got, expected $4"; fi
     cd .. && rm -rf dosref
 }
 dos_ref t.d64 40 1 3056002060
@@ -106,6 +110,14 @@ dos_ref t.d71 600 1 648183459
 dos_ref t.d81 2500 1 448102000
 dos_ref t.d80 1300 0 1417827109
 dos_ref t.d82 3000 0 3895675243
+
+# --alloc auto has no drive to compare with; these sums only make sure that
+# the planned layout does not change unnoticed (checked with -V and -X above)
+dos_ref t.d64 40 1 4104602902 auto
+dos_ref t.d71 600 1 756665532 auto
+dos_ref t.d81 2500 1 3887907604 auto
+dos_ref t.d80 1300 0 1680565862 auto
+dos_ref t.d82 3000 0 1074286723 auto
 
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

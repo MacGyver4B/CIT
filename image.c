@@ -158,118 +158,6 @@ side_tracks(image_type type)
     return fmt(type)->num_tracks / fmt(type)->sides;
 }
 
-alloc_mode_t alloc_mode = ALLOC_CC1541;
-
-/*
- * Block allocation as the Commodore DOS does it (INTTS/NXTTS in tstfnd of
- * DOS 2.1/2.6/2.7, 1571 and 1581, all the same apart from the parameters):
- *
- * First block of a file: the track nearest to the directory track with free
- * blocks, alternately below and above (dir-1, dir+1, dir-2, ...); on it the
- * first free sector from 0.
- * Next block: if the track still has free blocks, sector + increment; past
- * the end of the track the number of sectors and 1 more are subtracted; from
- * there the next free sector upwards, else from 0. A full track moves the
- * file one track further away from the directory track (the sector number is
- * kept); at the edge of the disk it continues next to the directory track on
- * the other side with sector 0. Double sided drives (1571, 8250) count the
- * tracks of both sides as one row 1..max.
- *
- * Not reproduced on purpose: when a file fills its last block exactly, the
- * 1541/4040 DOS allocates one more block and does not free it on close (a
- * lost block that only a validate frees again). cit writes the clean result.
- */
-static int
-dos_free_blocks(image_type type, const unsigned char *image, int track)
-{
-    if (track == dirtrack(type) || track == fmt(type)->second_bam_track) {
-        return 0;
-    }
-    return image[get_bam_count_offset(type, track)];
-}
-
-/* first free sector from start upwards, then from 0 (GETSEC) */
-static int
-dos_getsec(image_type type, const unsigned char *image, int track, int start)
-{
-    for (int s = start; s < num_sectors(type, track); s++) {
-        if (is_sector_free(type, image, track, s, 0, 0)) {
-            return s;
-        }
-    }
-    for (int s = 0; s < num_sectors(type, track); s++) {
-        if (is_sector_free(type, image, track, s, 0, 0)) {
-            return s;
-        }
-    }
-    return -1;
-}
-
-bool
-dos_first_block(image_type type, const unsigned char *image, int *track, int *sector)
-{
-    int dt = dirtrack(type);
-    for (int r = 1; ; r++) {
-        int t = dt - r;
-        if (t > 0 && dos_free_blocks(type, image, t) > 0) {
-            *track = t;
-            break;
-        }
-        t = dt + r;
-        if (t > (int)image_num_tracks(type)) {
-            return false;
-        }
-        if (dos_free_blocks(type, image, t) > 0) {
-            *track = t;
-            break;
-        }
-    }
-    *sector = dos_getsec(type, image, *track, 0);
-    return *sector >= 0;
-}
-
-bool
-dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment)
-{
-    int dt = dirtrack(type);
-    int t = *track;
-    int s = *sector;
-    int passes = 3;
-    while (dos_free_blocks(type, image, t) == 0) {
-        if (t == dt) {
-            return false;
-        }
-        if (t < dt) {
-            if (--t == 0) {
-                t = dt + 1;
-                s = 0;
-                if (--passes == 0) {
-                    return false;
-                }
-            }
-        } else {
-            if (++t > (int)image_num_tracks(type)) {
-                t = dt - 1;
-                s = 0;
-                if (--passes == 0) {
-                    return false;
-                }
-            }
-        }
-    }
-    s += increment;
-    int n = num_sectors(type, t);
-    if (s > n) {
-        s -= n;
-        if (s > 0) {
-            s--;
-        }
-    }
-    *track = t;
-    *sector = dos_getsec(type, image, t, s);
-    return *sector >= 0;
-}
-
 /* Header (dir_track/0) or BAM block: not part of any file */
 bool
 is_system_block(image_type type, int track, int sector)
@@ -748,7 +636,7 @@ new_dir_slot(image_type type, unsigned char* image, int dir_sector_interleave, i
     /* allocate new dir block */
     int last_sector = *dirsector;
     int next_sector = -1;
-    if (alloc_mode == ALLOC_DOS) {
+    if (alloc_mode != ALLOC_CC1541) {
         /* NXDRBK: like the next block of a file, but only on the directory track */
         int n = num_sectors(type, dirtrack(type));
         int s = last_sector + fmt(type)->dir_interleave;
