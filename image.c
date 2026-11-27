@@ -174,6 +174,10 @@ alloc_mode_t alloc_mode = ALLOC_CC1541;
  * kept); at the edge of the disk it continues next to the directory track on
  * the other side with sector 0. Double sided drives (1571, 8250) count the
  * tracks of both sides as one row 1..max.
+ *
+ * Not reproduced on purpose: when a file fills its last block exactly, the
+ * 1541/4040 DOS allocates one more block and does not free it on close (a
+ * lost block that only a validate frees again). cit writes the clean result.
  */
 static int
 dos_free_blocks(image_type type, const unsigned char *image, int track)
