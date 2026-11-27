@@ -1160,7 +1160,9 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                         } else {
                             sector = file->first_sector_new_track;
                         }
-                        sector %= num_sectors(type, track);
+                        if (track <= image_num_tracks(type)) { /* else: disk full, reported below */
+                            sector %= num_sectors(type, track);
+                        }
                         findSector = sector;
 
                         while ((!file_usedirtrack)

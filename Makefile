@@ -48,6 +48,11 @@ check: cit test_cit
 
 test: check
 
+# byte for byte comparison with an older state: make compare REF=<git ref>
+REF ?= cc1541-4.2
+compare: cit
+	./tests/compare.sh $(REF) ./cit
+
 cit_asan: $(CIT_OBJS:.o=.c) cit.h
 	$(CC) $(CFLAGS) -g -fsanitize=address -fsanitize=undefined -o $@ $(CIT_OBJS:.o=.c)
 
@@ -116,6 +121,6 @@ wrap: cit.1.txt.in LICENSE.txt README.md
 clean:
 	rm -rf cit-$(VERSION)/ *~ README.md.T *.o *.orig cit cit_asan test_cit cit-$(VERSION).* cit.1 cit.1.txt
 
-.PHONY: all check clean codestyle dist dist-all dist-bz2 dist-check dist-gz dist-xz dist-zip install man test wrap
+.PHONY: all check clean compare codestyle dist dist-all dist-bz2 dist-check dist-gz dist-xz dist-zip install man test wrap
 
 .EXPORT_ALL_VARIABLES:

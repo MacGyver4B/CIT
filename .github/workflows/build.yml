@@ -33,10 +33,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # make compare builds cc1541 4.2 from history
       - name: Build and test (with sanitizers)
         run: make -j2 asantest ENABLE_WERROR=1
       - name: Build
         run: make -j2 all check ENABLE_WERROR=1 LDFLAGS="-s"
+      - name: Compare with cc1541 4.2
+        run: make compare REF=origin/cc1541-4.2
       - uses: actions/upload-artifact@v4
         with:
           name: linux
