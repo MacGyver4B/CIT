@@ -119,5 +119,27 @@ dos_ref t.d81 2500 1 3887907604 auto
 dos_ref t.d80 1300 0 1680565862 auto
 dos_ref t.d82 3000 0 1074286723 auto
 
+# --from: image -> folder (x00) -> image of another format, contents, names,
+# types and directory order must survive; source and target the same is refused
+from_test() {
+    rm -rf ft && mkdir ft && cd ft || exit 2
+    head -c 500 /dev/urandom > a; head -c 9000 /dev/urandom > b; head -c 30000 /dev/urandom > c
+    "$CIT" -n quelle -i qx -f boot -w a -f daten -T SEQ -w b -f prog -w c src.d82 > /dev/null 2>&1
+    "$CIT" --from src.d82 out > /dev/null 2>&1
+    if [ -f out/001_boot.p00 ] && [ -f out/002_daten.s00 ] && [ -f out/003_prog.p00 ]; then ok; else bad "--from image -> folder: x00 files missing"; fi
+    "$CIT" --from out back.d64 > /dev/null 2>&1
+    if "$CIT" -V back.d64 > /dev/null 2>&1; then ok; else bad "--from folder -> image: -V failed"; fi
+    mkdir x && cd x && "$CIT" -X '*' ../back.d64 > /dev/null 2>&1
+    if cmp -s boot.prg ../a && cmp -s daten.seq ../b && cmp -s prog.prg ../c; then ok; else bad "--from round trip: contents differ"; fi
+    cd ..
+    order=$("$CIT" back.d64 | grep -o '"[a-z]*"' | tr -d '"\n')
+    if [ "$order" = "bootdatenprog" ]; then ok; else bad "--from round trip: directory order $order"; fi
+    "$CIT" --from src.d82 conv.d80 > /dev/null 2>&1
+    if "$CIT" conv.d80 | grep -q '"quelle *" qx 2c'; then ok; else bad "--from image -> image: name/id not taken over"; fi
+    if "$CIT" --from src.d82 src.d82 > /dev/null 2>&1; then bad "--from with source = target must fail"; else ok; fi
+    cd .. && rm -rf ft
+}
+from_test
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

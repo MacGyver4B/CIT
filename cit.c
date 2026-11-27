@@ -61,6 +61,17 @@ usage(void)
     printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
+    printf("--from path   Copy all files of an image or a folder; the source is only read.\n");
+    printf("              image -> new image: laid out anew (also another format),\n");
+    printf("                       disk name and id of the source unless -n/-i\n");
+    printf("              image -> existing image: files are added\n");
+    printf("              image -> folder: x00 files (P00/S00/U00/R00), numbered\n");
+    printf("                       in directory order\n");
+    printf("              folder -> image: x00 files with their name and type,\n");
+    printf("                       other files as PRG, in file name order\n");
+    printf("              A new target is a folder unless it has an image extension\n");
+    printf("              or -D is given. Not copied (with a warning): REL files into\n");
+    printf("              images, GEOS files, used blocks of no file, error tables.\n");
     printf("--alloc mode  Block allocation:\n");
     printf("              cc1541  from track 1 upwards (default for D41 and with\n");
     printf("                      Transwarp or the placement options below)\n");
@@ -932,8 +943,14 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
         }
         for (int i = 0; i < num_files; i++) {
             struct stat st;
-            if (!files[i].no_file && !files[i].loop_file && stat((const char *)files[i].alocalname, &st) == 0) {
-                num_blocks[i] = (int)((st.st_size + BLOCKSIZE - BLOCKOVERHEAD - 1) / (BLOCKSIZE - BLOCKOVERHEAD));
+            long size = -1;
+            if (files[i].has_data) {
+                size = files[i].data_size;
+            } else if (!files[i].no_file && !files[i].loop_file && stat((const char *)files[i].alocalname, &st) == 0) {
+                size = st.st_size;
+            }
+            if (size >= 0) {
+                num_blocks[i] = (int)((size + BLOCKSIZE - BLOCKOVERHEAD - 1) / (BLOCKSIZE - BLOCKOVERHEAD));
             }
         }
         /* the "*" file: first directory entry of the image */
@@ -981,7 +998,9 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
             int fileSize = 0;
 
             struct stat st;
-            if (stat((char*)file->alocalname, &st) == 0) {
+            if (file->has_data) {
+                fileSize = file->data_size;
+            } else if (stat((char*)file->alocalname, &st) == 0) {
                 fileSize = (int)st.st_size;
             }
 
@@ -1001,17 +1020,21 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
 
                 exit(-1);
             }
-            FILE* f = fopen((char*)file->alocalname, "rb");
-            if (f == NULL) {
-                fprintf(stderr, "ERROR: Could not open file \"%s\" for reading\n", file->alocalname);
+            if (file->has_data) {
+                memcpy(filedata, file->data, fileSize);
+            } else {
+                FILE* f = fopen((char*)file->alocalname, "rb");
+                if (f == NULL) {
+                    fprintf(stderr, "ERROR: Could not open file \"%s\" for reading\n", file->alocalname);
 
-                exit(-1);
+                    exit(-1);
+                }
+                if (fread(filedata, fileSize, 1, f) != 1) {
+                    fprintf(stderr, "ERROR: Unexpected filesize when reading %s\n", file->alocalname);
+                    exit(-1);
+                }
+                fclose(f);
             }
-            if (fread(filedata, fileSize, 1, f) != 1) {
-                fprintf(stderr, "ERROR: Unexpected filesize when reading %s\n", file->alocalname);
-                exit(-1);
-            }
-            fclose(f);
 
             if ((!(file->filetype & FILETYPETRANSWARPMASK))
                     && (file->min_track > 0)) {
@@ -1722,6 +1745,8 @@ main(int argc, char* argv[])
     int transwarp_set = 0;
     int format_choice = -1;           /* -D: image type, -1 = from the file name */
     bool alloc_explicit = false;      /* --alloc given */
+    const char *from_path = NULL;     /* --from: source image or folder */
+    bool name_set = false;            /* -n given */
     bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
     bool id_set = false;
     int sector_interleave_set = 0;
@@ -1754,6 +1779,7 @@ main(int argc, char* argv[])
                 return -1;
             }
             header = (unsigned char*)argv[++j];
+            name_set = true;
             set_header = 1;
             modified = 1;
         } else if (strcmp(argv[j], "-i") == 0) {
@@ -2020,6 +2046,13 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "--from") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --from\n");
+                return -1;
+            }
+            from_path = argv[++j];
+            modified = 1;
         } else if (strcmp(argv[j], "--alloc") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for --alloc\n");
@@ -2169,6 +2202,76 @@ main(int argc, char* argv[])
         }
     }
     dir_sector_interleave = fmt(type)->dir_interleave;
+
+    if (from_path != NULL) {
+        /* Target folder or image? An existing path tells itself; for a new one:
+           -D or a known image extension means image, anything else a folder. */
+        struct stat st;
+        bool target_exists = (stat(imagepath, &st) == 0);
+        bool target_folder;
+        if (target_exists) {
+            target_folder = S_ISDIR(st.st_mode);
+        } else {
+            size_t l = strlen(imagepath);
+            const char *ext = (l >= 4) ? imagepath + l - 4 : "";
+            bool image_ext = strcasecmp(ext, ".d64") == 0 || strcasecmp(ext, ".d71") == 0
+                             || strcasecmp(ext, ".d81") == 0 || strcasecmp(ext, ".d80") == 0
+                             || strcasecmp(ext, ".d82") == 0;
+            bool slash = l > 0 && (imagepath[l - 1] == '/' || imagepath[l - 1] == '\\');
+            target_folder = slash || (format_choice < 0 && !image_ext);
+        }
+        struct stat sst;
+        if (stat(from_path, &sst) != 0) {
+            fprintf(stderr, "ERROR: Source %s not found\n", from_path);
+            return -1;
+        }
+        if (target_exists && same_file(from_path, imagepath)) {
+            fprintf(stderr, "ERROR: Source and target are the same, --from always writes a copy\n");
+            return -1;
+        }
+        if (S_ISDIR(sst.st_mode)) {
+            if (target_folder) {
+                fprintf(stderr, "ERROR: Copying a folder into a folder is not what cit is for\n");
+                return -1;
+            }
+            if (add_files_from_folder(from_path, files, &num_files, defaultSectorInterleave, default_first_sector_new_track) < 0) {
+                return -1;
+            }
+        } else {
+            image_type stype;
+            unsigned char *simage;
+            if (load_source_image(from_path, &stype, &simage) < 0) {
+                return -1;
+            }
+            if (target_folder) {
+                if (num_files > 0) {
+                    fprintf(stderr, "ERROR: -w and -f only work with a target image\n");
+                    return -1;
+                }
+                int r = unpack_to_folder(stype, simage, imagepath);
+                free(simage);
+                return (r < 0) ? -1 : 0;
+            }
+            if (!target_exists) {
+                /* new image: disk name and id of the source, unless -n/-i */
+                static char sheader[3 * FILENAMEMAXSIZE + 1];
+                char sid[3 * 2 + 1];
+                source_header(stype, simage, sheader, sid);
+                if (!name_set) {
+                    header = (unsigned char *)sheader;
+                }
+                if (!id_set) {
+                    static char full[64];
+                    snprintf(full, sizeof full, "%s%s", sid, fmt(type)->default_id + 2);
+                    id = (unsigned char *)full;
+                    id_set = true;
+                }
+                set_header = 1;
+            }
+            add_files_from_image(stype, simage, files, &num_files, defaultSectorInterleave, default_first_sector_new_track);
+            free(simage); /* the files have their own copies of the data */
+        }
+    }
     /* The 5 byte id field is "id A0 dos-version". Only the C64 D64 (D41,
        also with -4/-5) keeps cc1541's free 5 byte id; for all other formats
        -i sets the 2 id characters and the rest comes from the format. */
@@ -2423,6 +2526,10 @@ main(int argc, char* argv[])
     }
 
     free(image);
+    for (int k = 0; k < num_files; k++) {
+        free(files[k].data_alloc);
+        free(files[k].name_alloc);
+    }
 
     return retval;
 }

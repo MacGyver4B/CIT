@@ -159,6 +159,12 @@ typedef struct {
     int                  nrSectors;
     int                  nrSectorsShown;
     int                  filetype;
+    /* content already in memory (--from), instead of reading alocalname */
+    const unsigned char *data;
+    int                  data_size;
+    bool                 has_data;
+    void                *data_alloc;           /* to free: start of the data buffer */
+    void                *name_alloc;           /* to free: alocalname, if allocated */
     /* placement of the file (strategy cc1541) and kind of entry */
     int                  start_sector;         /* -b: first sector of the file */
     bool                 start_sector_set;
@@ -278,6 +284,15 @@ typedef struct {
 } ts_block;
 int dos_free_blocks(image_type type, const unsigned char *image, int track);
 int dos_getsec(image_type type, const unsigned char *image, int track, int start);
+/* copy.c (--from) */
+bool same_file(const char *a, const char *b);
+int load_source_image(const char *path, image_type *type, unsigned char **image);
+void source_header(image_type type, const unsigned char *image, char *header, char *id); /* 3 * 16 + 1, 3 * 2 + 1 */
+int add_files_from_image(image_type type, const unsigned char *image, imagefile *files, int *num_files,
+                         int sector_interleave, int first_sector_new_track);
+int add_files_from_folder(const char *folder, imagefile *files, int *num_files,
+                          int sector_interleave, int first_sector_new_track);
+int unpack_to_folder(image_type type, const unsigned char *image, const char *folder);
 ts_block **auto_plan(image_type type, const unsigned char *image, imagefile *files, int num_files, const int *num_blocks, int star_file);
 bool dos_first_block(image_type type, const unsigned char *image, int *track, int *sector);
 bool dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment);
