@@ -2095,17 +2095,25 @@ main(int argc, char* argv[])
     if (!id_set) {
         id = (unsigned char*)fmt(type)->default_id;
     } else if (!free_id) {
+        /* take the first 2 id characters (hex escapes count as one), pad with A0 */
         const char *p = (const char *)id;
-        int len = 0;
-        while (*p) {
-            p += (p[0] == '#' && isxdigit((unsigned char)p[1]) && isxdigit((unsigned char)p[2])) ? 3 : 1;
-            len++;
+        int n = 0;
+        full_id[0] = 0;
+        for (int k = 0; k < 2; k++) {
+            int len = 0;
+            if (p[n] == '#' && isxdigit((unsigned char)p[n + 1]) && isxdigit((unsigned char)p[n + 2])) {
+                len = 3;
+            } else if (p[n]) {
+                len = 1;
+            }
+            if (len) {
+                strncat(full_id, p + n, len);
+                n += len;
+            } else {
+                strcat(full_id, "#a0");
+            }
         }
-        if (len != 2 || strlen((const char *)id) > 6) {
-            fprintf(stderr, "ERROR: The disk id must be 2 characters for %s images\n", fmt(type)->name);
-            return -1;
-        }
-        snprintf(full_id, sizeof full_id, "%s%s", (const char *)id, fmt(type)->default_id + 2);
+        strcat(full_id, fmt(type)->default_id + 2);
         id = (unsigned char*)full_id;
     }
     for (int k = 0; k < num_files; k++) {
