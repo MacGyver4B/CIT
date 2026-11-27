@@ -308,6 +308,7 @@ ts_block **auto_plan(image_type type, const unsigned char *image, imagefile *fil
 bool dos_first_block(image_type type, const unsigned char *image, int *track, int *sector);
 bool dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment);
 bool is_system_block(image_type type, int track, int sector);
+bool swap_dir_entries(image_type type, unsigned char *image, const unsigned char *pname, int position);
 int get_bam_offset(image_type type, unsigned int track);
 int get_bam_count_offset(image_type type, unsigned int track);
 int linear_sector(image_type type, int track, int sector);

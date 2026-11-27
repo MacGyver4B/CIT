@@ -353,6 +353,71 @@ x00_name(char *out, size_t len, int number, const unsigned char *name, int filet
     snprintf(out, len, "%03d_%s.%c00", number, aname, (t <= 4) ? letter[t] : 'u');
 }
 
+/* PETSCII name in petcat notation: printable characters as they are,
+   everything else as {$xx} */
+static void
+petcat_name(char *out, const unsigned char *p, int len)
+{
+    int n = 0;
+    for (int i = 0; i < len && p[i] != FILENAMEEMPTYCHAR; i++) {
+        unsigned char c = p[i];
+        if (c >= 0x20 && c < 0x40) {
+            out[n++] = c;
+        } else if (c >= 0x41 && c <= 0x5a) {
+            out[n++] = c + 0x20;          /* unshifted letters list as lower case */
+        } else if (c >= 0xc1 && c <= 0xda) {
+            out[n++] = c - 0x80;          /* shifted letters as upper case */
+        } else {
+            n += sprintf(out + n, "{$%02x}", c);
+        }
+    }
+    out[n] = 0;
+}
+
+/* directory.txt: the directory as a listing, for reading only (directory
+   art, block counts shown, entries without blocks, links); not read back */
+static void
+write_directory_txt(image_type type, const unsigned char *image, const char *folder, const source_file *src, int n)
+{
+    size_t plen = strlen(folder) + 16;
+    char *path = malloc(plen);
+    if (path == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation error\n");
+        exit(-1);
+    }
+    snprintf(path, plen, "%s/directory.txt", folder);
+    FILE *f = fopen(path, "w");
+    if (f == NULL) {
+        fprintf(stderr, "ERROR: Could not write %s\n", path);
+        exit(-1);
+    }
+    static const char *types[] = { "del", "seq", "prg", "usr", "rel", "???", "???", "???" };
+    const unsigned char *h = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    char name[6 * FILENAMEMAXSIZE + 1];
+    char id[6 * 5 + 1];
+    petcat_name(name, h + fmt(type)->header_offset, FILENAMEMAXSIZE);
+    petcat_name(id, h + fmt(type)->id_offset, 5);
+    fprintf(f, "0 \"%s\" %s\n", name, id);
+    for (int i = 0; i < n; i++) {
+        petcat_name(name, src[i].name, FILENAMEMAXSIZE);
+        char q[6 * FILENAMEMAXSIZE + 3];
+        snprintf(q, sizeof q, "\"%s\"", name);
+        fprintf(f, "%-5d %-18s %c%s%c", src[i].shown_blocks, q,
+                (src[i].filetype & 0x80) ? ' ' : '*', types[src[i].filetype & 7],
+                (src[i].filetype & 0x40) ? '<' : ' ');
+        if (src[i].kind == ENTRY_DUMMY) {
+            fprintf(f, "  ; %03d no blocks", i + 1);
+        } else if (src[i].kind == ENTRY_LINK) {
+            fprintf(f, "  ; %03d same blocks as %03d", i + 1, src[i].link + 1);
+        } else {
+            fprintf(f, "  ; %03d", i + 1);
+        }
+        fprintf(f, "\n");
+    }
+    fclose(f);
+    free(path);
+}
+
 int
 unpack_to_folder(image_type type, const unsigned char *image, const char *folder)
 {
@@ -369,12 +434,10 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
     }
     source_file *src;
     int n = read_source_files(type, image, &src);
-    int skipped = 0;
+    write_directory_txt(type, image, folder, src, n);
     for (int i = 0; i < n; i++) {
-        if (src[i].kind != ENTRY_FILE) {
-            skipped++;
-            continue;
-        }
+        /* entries without blocks: 0 byte x00 files; links: a copy of the data */
+        const source_file *data = (src[i].kind == ENTRY_LINK) ? &src[src[i].link] : &src[i];
         char name[3 * FILENAMEMAXSIZE + 16];
         x00_name(name, sizeof name, i + 1, src[i].name, src[i].filetype);
         size_t plen = strlen(folder) + strlen(name) + 2;
@@ -396,7 +459,7 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
         }
         header[25] = ((src[i].filetype & 7) == FILETYPEREL) ? src[i].record_length : 0;
         if (fwrite(header, 1, X00_HEADER_SIZE, f) != X00_HEADER_SIZE
-                || (src[i].size > 0 && fwrite(src[i].data, 1, src[i].size, f) != (size_t)src[i].size)) {
+                || (data->size > 0 && fwrite(data->data, 1, data->size, f) != (size_t)data->size)) {
             fprintf(stderr, "ERROR: Could not write %s\n", path);
             return -1;
         }
@@ -405,11 +468,9 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
             printf("%s\n", path);
         }
         free(path);
-        free(src[i].data);
     }
-    if (skipped > 0) {
-        fprintf(stderr, "WARNING: %d directory entr%s without own blocks (directory art, links) not unpacked yet\n",
-                skipped, skipped == 1 ? "y" : "ies");
+    for (int i = 0; i < n; i++) {
+        free(src[i].data);
     }
     free(src);
     return n;
@@ -436,8 +497,8 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
     int count = 0;
     struct dirent *de;
     while ((de = readdir(d)) != NULL) {
-        if (de->d_name[0] == '.') {
-            continue;
+        if (de->d_name[0] == '.' || strcasecmp(de->d_name, "directory.txt") == 0) {
+            continue; /* hidden files; the listing written by unpacking */
         }
         names = realloc(names, sizeof(char *) * (count + 1));
         if (names != NULL) {
@@ -482,12 +543,12 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
         }
         imagefile *fi = &files[*num_files];
         const char *ext = strrchr(names[i], '.');
-        bool x00 = ext != NULL && strlen(ext) == 4 && strchr("pPsSuUrR", ext[1])
+        bool x00 = ext != NULL && strlen(ext) == 4 && strchr("pPsSuUrRdD", ext[1])
                    && isdigit((unsigned char)ext[2]) && isdigit((unsigned char)ext[3])
                    && st.st_size >= X00_HEADER_SIZE && memcmp(data, "C64File", 8) == 0;
         if (x00) {
             int t = strchr("sS", ext[1]) ? FILETYPESEQ : strchr("uU", ext[1]) ? FILETYPEUSR
-                    : strchr("rR", ext[1]) ? FILETYPEREL : FILETYPEPRG;
+                    : strchr("rR", ext[1]) ? FILETYPEREL : strchr("dD", ext[1]) ? FILETYPEDEL : FILETYPEPRG;
             if (t == FILETYPEREL) {
                 fi->record_length = data[25];
                 if (fi->record_length == 0) {
@@ -512,6 +573,14 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
             fi->filetype = 0x80 | t;
             fi->data = data + X00_HEADER_SIZE;
             fi->data_size = (int)st.st_size - X00_HEADER_SIZE;
+            if (fi->data_size == 0) {
+                /* no data: a directory entry without blocks (directory art) */
+                fi->no_file = true;
+                fi->nrSectors = 0;
+                fi->nrSectorsShown = 0;
+                fi->force_new = true;
+                fi->record_length = 0;
+            }
         } else {
             /* plain files as -X writes them: name.prg/.seq/.usr, name[rsNN].rel;
                anything else is a PRG with the whole file name */

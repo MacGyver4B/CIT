@@ -72,6 +72,9 @@ usage(void)
     printf("              A new target is a folder unless it has an image extension\n");
     printf("              or -D is given. Not copied (with a warning): REL files into\n");
     printf("              images, GEOS files, used blocks of no file, error tables.\n");
+    printf("--dirpos name n  Swap the directory entry of name with entry n (1: the \"*\"\n");
+    printf("              file); for new files with --alloc auto, n = 1 also places\n");
+    printf("              the file next to the directory track.\n");
     printf("--alloc mode  Block allocation:\n");
     printf("              cc1541  from track 1 upwards (default for D41 and with\n");
     printf("                      Transwarp or the placement options below)\n");
@@ -894,7 +897,7 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
 }
 /* Write files to disk */
 static void
-write_files(image_type type, unsigned char *image, imagefile *files, int num_files, int usedirtrack, int dirtracksplit, int shadowdirtrack, int numdirblocks, int dir_sector_interleave, int allocation_strategy)
+write_files(image_type type, unsigned char *image, imagefile *files, int num_files, int usedirtrack, int dirtracksplit, int shadowdirtrack, int numdirblocks, int dir_sector_interleave, int allocation_strategy, const unsigned char *dirpos_first)
 {
     unsigned char sector = 0;
     int bytes_to_write = 0;
@@ -973,11 +976,14 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                 }
             }
         }
-        /* the "*" file: first directory entry of the image */
+        /* the "*" file: first directory entry of the image, or the file that
+           --dirpos puts in the first place */
         int star_file = -1;
         for (int i = 0; i < num_files; i++) {
-            if (files[i].direntryindex == 0) {
+            if (dirpos_first != NULL ? memcmp(files[i].pfilename, dirpos_first, FILENAMEMAXSIZE) == 0
+                                     : files[i].direntryindex == 0) {
                 star_file = i;
+                break;
             }
         }
         plan = auto_plan(type, image, files, num_files, num_blocks, star_file);
@@ -1797,6 +1803,8 @@ main(int argc, char* argv[])
     bool alloc_explicit = false;      /* --alloc given */
     const char *convert_path = NULL;     /* --convert: source image or folder */
     bool name_set = false;            /* -n given */
+    unsigned char dirpos_name[FILENAMEMAXSIZE];
+    int dirpos = 0;                   /* --dirpos: position, 0 = none */
     bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
     bool id_set = false;
     int sector_interleave_set = 0;
@@ -2096,6 +2104,14 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "--dirpos") == 0) {
+            if (argc < j + 3 || sscanf(argv[j + 2], "%d", &dirpos) != 1 || dirpos < 1) {
+                fprintf(stderr, "ERROR: Error parsing arguments for --dirpos (name position)\n");
+                return -1;
+            }
+            evalhexescape((unsigned char *)argv[j + 1], dirpos_name, FILENAMEMAXSIZE, FILENAMEEMPTYCHAR);
+            j += 2;
+            modified = 1;
         } else if (strcmp(argv[j], "--convert") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for --convert\n");
@@ -2533,7 +2549,12 @@ main(int argc, char* argv[])
     create_dir_entries(type, image, files, num_files, dir_sector_interleave, shadowdirtrack, nooverwrite);
 
     /* Write files and mark sectors in BAM */
-    write_files(type, image, files, num_files, usedirtrack, dirtracksplit, shadowdirtrack, numdirblocks, dir_sector_interleave, allocation_strategy);
+    write_files(type, image, files, num_files, usedirtrack, dirtracksplit, shadowdirtrack, numdirblocks, dir_sector_interleave, allocation_strategy,
+                (dirpos == 1) ? dirpos_name : NULL);
+
+    if (dirpos > 0 && !swap_dir_entries(type, image, dirpos_name, dirpos)) {
+        return -1;
+    }
 
     /* Print allocation info */
     if (verbose) {

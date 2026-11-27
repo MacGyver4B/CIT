@@ -96,8 +96,12 @@ same is refused.
 * image -> new image: laid out anew with `auto`, also into another
   format; disk name and id of the source unless `-n`/`-i`
 * image -> existing image: the files are added (`dos`)
-* image -> folder: PC64 x00 files (P00/S00/U00/R00), numbered in
-  directory order (`001_name.p00`) so that the order survives
+* image -> folder: PC64 x00 files (P00/S00/U00/R00/D00), numbered in
+  directory order (`001_name.p00`) so that the order survives; entries
+  without blocks (directory art) as x00 files without data, entries for
+  the same blocks as copies; `directory.txt` lists the directory with the
+  details x00 cannot hold (block counts shown, locked, links) - for
+  reading only, it is not read back
 * folder -> image: x00 files with the name and type of their header;
   plain files as `-X` writes them (`name.prg`, `.seq`, `.usr`,
   `name[rs64].rel` with the record length); anything else as PRG named
@@ -112,7 +116,14 @@ control codes, the block count shown, entries without blocks, several
 entries for the same blocks (they share one copy) and equal names. Unclosed
 entries keep only their directory entry. Not copied, with a warning: GEOS
 files, broken block chains, used blocks that belong to no file, error
-tables. Unpacking to a folder skips entries without own blocks for now.
+tables.
+
+### Directory order (`--dirpos name n`) ###
+
+Swaps the directory entry of a file with entry n; the blocks stay where
+they are. n = 1 makes it the `*` file. Works on new and existing images;
+for new files with `auto`, n = 1 also places the file next to the
+directory track.
 
 Also changed from cc1541: `-V` accepts several entries for the same blocks
 (the start block was overwritten while marking the chain), and the filename
@@ -152,7 +163,6 @@ Layout:
 * `-XA`: extract with conversion (BASIC as text in `petcat` notation,
   load address as `[la0801]`, only where the way back is lossless)
 * writing REL files from the command line (`-T REL` with a record length)
-* an option to choose the first file (`*` file)
 * D67 (2040), D60/D90 (D9060/D9090), DNP, CMD containers, error tables,
   G64/G71/NIB in raw.c
 

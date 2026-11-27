@@ -158,6 +158,51 @@ side_tracks(image_type type)
     return fmt(type)->num_tracks / fmt(type)->sides;
 }
 
+/* --dirpos: swaps the directory entry of the file name (PETSCII, padded
+   with A0) with the entry at position (1 = first entry, the "*" file);
+   only the entries change, not the blocks. Returns false if not possible. */
+bool
+swap_dir_entries(image_type type, unsigned char *image, const unsigned char *pname, int position)
+{
+    int entry[MAXNUMFILES];
+    int n = 0;
+    int found = -1;
+    int t = dirtrack(type);
+    int s = first_dir_sector(type);
+    int blocks = 0;
+    while (t != 0 && blocks++ < MAXSECTORS) {
+        int b = linear_sector(type, t, s) * BLOCKSIZE;
+        for (int k = 0; k < DIRENTRIESPERBLOCK && n < MAXNUMFILES; k++) {
+            int e = b + k * DIRENTRYSIZE;
+            if (image[e + FILETYPEOFFSET] == 0) {
+                continue; /* empty slot, not listed */
+            }
+            if (found < 0 && memcmp(image + e + FILENAMEOFFSET, pname, FILENAMEMAXSIZE) == 0) {
+                found = n;
+            }
+            entry[n++] = e;
+        }
+        t = image[b + TRACKLINKOFFSET];
+        s = image[b + SECTORLINKOFFSET];
+    }
+    if (found < 0) {
+        fprintf(stderr, "ERROR: --dirpos: file not found in the directory\n");
+        return false;
+    }
+    if (position < 1 || position > n) {
+        fprintf(stderr, "ERROR: --dirpos: position %d, the directory has %d entries\n", position, n);
+        return false;
+    }
+    int a = entry[found];
+    int b = entry[position - 1];
+    for (int i = FILETYPEOFFSET; i < DIRENTRYSIZE; i++) {
+        unsigned char c = image[a + i];
+        image[a + i] = image[b + i];
+        image[b + i] = c;
+    }
+    return true;
+}
+
 /* Header (dir_track/0) or BAM block: not part of any file */
 bool
 is_system_block(image_type type, int track, int sector)

@@ -188,6 +188,17 @@ art_test() {
     "$CIT" --convert src.d64 dst.d82 > /dev/null 2>&1
     if "$CIT" -V dst.d82 > /dev/null 2>&1; then ok; else bad "directory art: -V failed"; fi
     if [ "$("$CIT" src.d64 2>/dev/null | sed -n '4,10p')" = "$("$CIT" dst.d82 2>/dev/null | sed -n '4,10p')" ]; then ok; else bad "directory art: listing differs after --convert"; fi
+    # unpacking: entries without blocks as 0 byte x00 files, a listing for reading
+    "$CIT" --convert src.d64 out > /dev/null 2>&1
+    # (an x00 file without data is just its 26 byte header)
+    if [ "$(wc -c < "out/001_----------------.d00")" -eq 26 ] && grep -q "same blocks as 002" out/directory.txt; then ok; else bad "directory art: unpacking"; fi
+    "$CIT" -m --convert out back.d64 > /dev/null 2>&1
+    if [ "$("$CIT" back.d64 2>/dev/null | grep -c '"----------------" del')" -eq 3 ] && ! "$CIT" back.d64 2>/dev/null | grep -q directory; then ok; else bad "directory art: packing"; fi
+    # --dirpos swaps two entries, the blocks stay
+    cp src.d64 dp.d64
+    "$CIT" -m --dirpos gesperrt 1 dp.d64 > /dev/null 2>&1
+    if "$CIT" dp.d64 2>/dev/null | sed -n 4p | grep -q '"gesperrt"' && "$CIT" -V -m dp.d64 > /dev/null 2>&1; then ok; else bad "--dirpos"; fi
+    if "$CIT" --dirpos nichtda 1 dp.d64 > /dev/null 2>&1; then bad "--dirpos with an unknown name must fail"; else ok; fi
     cd .. && rm -rf at
 }
 art_test
