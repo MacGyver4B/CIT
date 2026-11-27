@@ -52,10 +52,10 @@
 #endif
 
 #define DIRENTRIESPERBLOCK     8
-#define MAXTRACKS              80   /* largest image (D81) */
-#define MAXSECTORS             40   /* most sectors per track (D81) */
+#define MAXTRACKS              154  /* most tracks of any image (D82) */
+#define MAXSECTORS             192  /* most sectors per track (D90: 6 heads x 32) */
 #define DIRTRACK_D41_D71       18
-#define MAXNUMFILES            ((MAXSECTORS - 3) * DIRENTRIESPERBLOCK) /* D81 directory */
+#define MAXNUMFILES            296  /* files per call (D81 directory: 37 sectors x 8) */
 #define DIRENTRYSIZE           32
 #define BLOCKSIZE              256
 #define BLOCKOVERHEAD          2
@@ -209,15 +209,15 @@ typedef struct {
 } patch;
 
 enum mode {
-    MODE_BEGINNING_SECTOR_MASK   = 0x003f, /* 6 bits */
-    MODE_MIN_TRACK_MASK          = 0x0fc0, /* 6 bits */
-    MODE_MIN_TRACK_SHIFT         = 6,
-    MODE_SAVETOEMPTYTRACKS       = 0x1000,
-    MODE_FITONSINGLETRACK        = 0x2000,
-    MODE_SAVECLUSTEROPTIMIZED    = 0x4000,
-    MODE_LOOPFILE                = 0x8000,
-    MODE_TRANSWARPBOOTFILE       = 0x10000,
-    MODE_NOFILE                  = 0x20000
+    MODE_BEGINNING_SECTOR_MASK   = 0x0000ff, /* 8 bits: sector + 1 (up to 192 sectors per track) */
+    MODE_MIN_TRACK_MASK          = 0x00ff00, /* 8 bits (up to 154 tracks) */
+    MODE_MIN_TRACK_SHIFT         = 8,
+    MODE_SAVETOEMPTYTRACKS       = 0x010000,
+    MODE_FITONSINGLETRACK        = 0x020000,
+    MODE_SAVECLUSTEROPTIMIZED    = 0x040000,
+    MODE_LOOPFILE                = 0x080000,
+    MODE_TRANSWARPBOOTFILE       = 0x100000,
+    MODE_NOFILE                  = 0x200000
 };
 
 typedef enum {
@@ -2067,7 +2067,7 @@ check_bam(image_type type, const unsigned char* image)
     int sectorsOccupied = 0;
     int sectorsOccupiedOnDirTrack = 0;
 
-    int blocktags[MAXTRACKS][MAXSECTORS];
+    static int blocktags[MAXTRACKS][MAXSECTORS]; /* 118 KB, not on the stack */
 
     if (verbose) {
         memset(blocktags, 0, sizeof blocktags);
