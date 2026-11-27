@@ -8,7 +8,7 @@ using x00 (P00/S00/U00/R00) files.
 It is based on cc1541 by JackAsser, Krill, Claus and Björn Esser
 (MIT license). The original Bitbucket repository of cc1541 is no longer
 available; version 4.2 is preserved here unchanged as the first commit
-(tag `cc1541-4.2`). The original README follows below.
+(branch `cc1541-4.2`). The original README follows below.
 
 Builds: GitHub Actions workflow "build" (started by hand) produces
 Windows, Linux and macOS binaries; locally `make` and `make check`.
