@@ -15,6 +15,122 @@ Windows, Linux and macOS binaries; locally `make` and `make check`.
 Visual Studio users can create a project from the sources; project files
 are not kept in the repository.
 
+## What CIT adds to cc1541 ##
+
+### Image formats ###
+
+| Format | Drive(s) | Tracks | Directory | Notes |
+|---|---|---|---|---|
+| D64 / D41 | 1541 (C64) | 35 (40 with -4/-5) | 18/1 | default for `.d64`, cc1541 behaviour |
+| D64 / D40 | 2031, 4040 | 35 | 18/1 | `-D d40`: no Transwarp, strict disk id |
+| D71 | 1571 | 70 | 18/1 | |
+| D81 | 1581 | 80 | 40/3 | disk id completed to "3D" like a real 1581 |
+| D80 | 8050 | 77 | 39/1 | BAM on 38/0 and 38/3 |
+| D82 | 8250, SFD-1001 | 154 | 39/1 | BAM on 38/0, 38/3, 38/6, 38/9 |
+
+The extension selects the format; `-D d40|d41|d64|d71|d81|d80|d82`
+overrides it (case does not matter). Empty D80/D82 images are byte
+identical to images formatted by VICE.
+
+**Disk id:** the 5 byte id field is "id A0 dos-version". The C64 D64
+(D41) keeps the free 5 character id of cc1541. For all other formats
+`-i` sets the 2 id characters (longer input is shortened, shorter padded
+with A0) and the DOS version comes from the format.
+
+### Block allocation (`--alloc`) ###
+
+* `cc1541` - as cc1541: from track 1 upwards, sector interleave 10
+  (D81: 1). Default for D41 and whenever Transwarp or a cc1541
+  placement option is used.
+* `dos` - exactly as the drive's DOS. Default when files are added to an
+  existing image, so they end up where the drive would put them.
+* `auto` - planned layout. Default for new images.
+
+`dos` follows INTTS/NXTTS and NXDRBK in the DOS sources (tstfnd of DOS
+2.1, 2.6, 2.7, the 1571 and the 1581 DOS; DOS 1 of the 2040 the same with
+2 instead of 3 passes):
+
+* first block of a file: the track nearest to the directory track with
+  free blocks, alternately below and above; first free sector from 0
+* next block: sector + increment; past the end of the track the number
+  of sectors and 1 more are subtracted; the next free sector from there,
+  else from 0
+* full track: one track further away from the directory track, the
+  sector number is kept; at the edge of the disk it continues next to
+  the directory track on the other side with sector 0
+* double sided drives (1571, 8250) count the tracks of both sides as one
+  row of tracks
+* sector increment for files: 1541/2031/4040 10, 1571 6, 1581 1,
+  8050/8250 5 (`begin` of DOS 2.7; `init` with 10 is not built in);
+  directory blocks: 3 (1581: 1)
+
+Checked in VICE with the real drives (4040, 1541, 1571, 1581, 8050,
+8250): 13 files written by the drive give byte identical images. Not
+reproduced on purpose: when a file fills its last block exactly, the
+1541/4040 DOS allocates one more block that it never frees (a validate
+frees it again).
+
+`auto`:
+
+* the first directory entry of a new image (the `*` file) next to the
+  directory track; on D71/D82 the other side of the directory cylinder
+  comes first (head change, no seek)
+* the other files by size, largest first; equal sizes keep their order,
+  so the same input always gives the same image; the directory order
+  is not changed
+* a file that fits on one track goes into the smallest gap that holds
+  it, else onto the first empty track near the directory track
+* larger files take whole tracks from the outside inwards, both sides of
+  a cylinder in a row on D71/D82
+* the sector increment of the drive's DOS on every track
+
+With `--alloc dos` or `auto`, the cc1541 placement options `-b -e -E -r
+-c -x` are ignored with a warning; Transwarp, `-t` and `-d` change the
+structure of the disk and switch to `cc1541`, also with a warning.
+
+### Copying (`--from`) ###
+
+The source is only read, a copy is always written; source and target the
+same is refused.
+
+* image -> new image: laid out anew with `auto`, also into another
+  format; disk name and id of the source unless `-n`/`-i`
+* image -> existing image: the files are added (`dos`)
+* image -> folder: PC64 x00 files (P00/S00/U00/R00), numbered in
+  directory order (`001_name.p00`) so that the order survives
+* folder -> image: x00 files with the name and type of their header,
+  other files as PRG named after the file, in file name order
+
+A new target is a folder unless it has an image extension or `-D` is
+given; an existing path tells itself.
+
+Not copied, with a warning: GEOS files, unclosed files, broken block
+chains, used blocks that belong to no file, error tables. REL files are
+written to R00 files; copying them into images follows (see below).
+
+### Planned ###
+
+* REL files as one unit of data and index: side sectors (and the super
+  side sector of the 8250/1581) are only an index of the data blocks and
+  depend on their position, so they are rebuilt when writing, never
+  copied or unpacked. `auto` writes a REL file as one stream: super side
+  sector, side sector, its 120 data blocks, next side sector ...
+* unpacking variants: x00 (default, lossless), plain files (as `-X`; REL
+  as `name[rs64].rel`), converted (BASIC as text in `petcat` notation,
+  load address as `[la0801]`, only where the way back is lossless)
+* an option to choose the first file (`*` file)
+* D67 (2040), D60/D90 (D9060/D9090), DNP, CMD containers, error tables,
+  G64/G71/NIB in raw.c
+
+### Tests ###
+
+* `make check` - the cc1541 tests plus `tests/formats.sh`: round trip of
+  every format and strategy (write, `-V`, `-X`, compare), disk id rule,
+  a wrong BAM must be detected, reference sums for `dos` (confirmed by
+  the real drives in VICE) and `auto`, `--from` round trips
+* `make compare REF=<git ref>` - byte by byte comparison of 29 cases
+  with another version, e.g. `cc1541-4.2`
+
 ---
 
 # README #
