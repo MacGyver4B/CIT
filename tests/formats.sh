@@ -66,7 +66,7 @@ D80Z="39:29 53:27 64:25 77:23"
 D82Z="$D80Z 116:29 130:27 141:25 154:23"
 
 # all checks once per allocation strategy
-for ALLOC in "" "--alloc dos" "--alloc auto"; do
+for ALLOC in "" "--alloc cc1541" "--alloc dos" "--alloc auto"; do
 # ids are given in ASCII, cit stores PETSCII ("ab" = 41 42)
 # D41: 5 character id kept; BAM 18/0, track 35 bitmap
 ID=abcde check_format d41 t.d64 400 $(( $(offset 18 0 $D64Z) + 0xa2 )) 4142434445 \

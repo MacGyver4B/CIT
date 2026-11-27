@@ -62,12 +62,15 @@ usage(void)
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
     printf("--alloc mode  Block allocation:\n");
-    printf("              cc1541  from track 1 upwards (default)\n");
+    printf("              cc1541  from track 1 upwards (default for D41 and with\n");
+    printf("                      Transwarp or the placement options below)\n");
     printf("              dos     as the drive: from the directory track outwards\n");
     printf("              auto    first file next to the directory track, large files\n");
     printf("                      on whole tracks from the outside, small files into\n");
     printf("                      the best fitting gap; dos and auto use the sector\n");
     printf("                      increment of the drive's DOS\n");
+    printf("              Other default: dos to add to an existing image, auto for\n");
+    printf("              a new one.\n");
     printf("-4            Use tracks 35-40 with SPEED DOS BAM formatting.\n");
     printf("-5            Use tracks 35-40 with DOLPHIN DOS BAM formatting.\n");
     printf("-d track      Maintain a shadow directory (copy of the actual directory without\n");
@@ -1718,6 +1721,7 @@ main(int argc, char* argv[])
     /* flags to detect illegal settings */
     int transwarp_set = 0;
     int format_choice = -1;           /* -D: image type, -1 = from the file name */
+    bool alloc_explicit = false;      /* --alloc given */
     bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
     bool id_set = false;
     int sector_interleave_set = 0;
@@ -2022,6 +2026,7 @@ main(int argc, char* argv[])
                 return -1;
             }
             const char *m = argv[++j];
+            alloc_explicit = true;
             if (strcasecmp(m, "dos") == 0) {
                 alloc_mode = ALLOC_DOS;
             } else if (strcasecmp(m, "auto") == 0) {
@@ -2197,6 +2202,25 @@ main(int argc, char* argv[])
         if (files[k].start_sector_set && files[k].start_sector >= max_sectors(type)) {
             fprintf(stderr, "ERROR: Invalid beginning sector %d specified\n", files[k].start_sector);
             return -1;
+        }
+    }
+    bool cc1541_options = transwarp_set || usedirtrack || shadowdirtrack || !dirtracksplit;
+    for (int k = 0; k < num_files; k++) {
+        cc1541_options |= files[k].start_sector_set || files[k].save_to_empty_track || files[k].fit_on_single_track
+                          || files[k].min_track > 0 || files[k].cluster_optimized;
+    }
+    if (!alloc_explicit) {
+        /* Default strategy:
+           - D41 (C64 D64, also -4/-5) and any cc1541 placement option: cc1541
+           - existing image (edit): dos, so new files go where the drive would put them
+           - new image: auto */
+        struct stat st;
+        if ((type == IMAGE_D64 && !d40) || extended || cc1541_options) {
+            alloc_mode = ALLOC_CC1541;
+        } else if (stat(imagepath, &st) == 0) {
+            alloc_mode = ALLOC_DOS;
+        } else {
+            alloc_mode = ALLOC_AUTO;
         }
     }
     if (alloc_mode != ALLOC_CC1541) {

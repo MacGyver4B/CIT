@@ -942,10 +942,10 @@ main(int argc, char* argv[])
     printf("%0*d:  %s:  %s\n", test_pad, test, result_str[result], description);
     remove("1.prg");
 
-    description = "Writing a PRG should result in first two blocks allocated on d81";
+    description = "Writing a PRG should result in first two blocks allocated on d81 (cc1541 strategy)";
     ++test;
     create_value_file("1.prg", 2 * 254, 1);
-    if (run_binary_cleanup(binary, "-f file -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
+    if (run_binary_cleanup(binary, "--alloc cc1541 -f file -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
         result = TEST_UNRESOLVED;
     } else if (image[40*39*256+256 + 6 + 11] == (char)0xfc) {
         result = TEST_PASS;
@@ -1033,13 +1033,13 @@ main(int argc, char* argv[])
     remove("1.prg");
     remove("2.prg");
 
-    description = "Overwriting a PRG on d81 should result in only first block allocated";
+    description = "Overwriting a PRG on d81 should result in only first block allocated (cc1541 strategy)";
     ++test;
     create_value_file("1.prg", 2 * 254, 1);
     create_value_file("2.prg", 1 * 254, 2);
-    if (run_binary(binary, "-f file -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
+    if (run_binary(binary, "--alloc cc1541 -f file -w 1.prg", "image.d81", &image, &size, false) != NO_ERROR) {
         result = TEST_UNRESOLVED;
-    } else if (run_binary_cleanup(binary, "-f file -w 2.prg", "image.d81", &image, &size, false) != NO_ERROR) {
+    } else if (run_binary_cleanup(binary, "--alloc cc1541 -f file -w 2.prg", "image.d81", &image, &size, false) != NO_ERROR) {
         result = TEST_UNRESOLVED;
     } else if (image[40 * 39 * 256 + 256 + 6 + 11] == (char)0xfe) {
         result = TEST_PASS;

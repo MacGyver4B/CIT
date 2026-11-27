@@ -83,7 +83,8 @@ run() { # $1 program, $2 directory, $3 commands
           if [ "$prog" = "$OLD" ]; then
               line=$(echo "$line" | sed 's/@ID2A@/12#a02a/g; s/@ID3D@/12#a03d/g')
           else
-              line=$(echo "$line" | sed 's/@ID2A@/12/g; s/@ID3D@/12/g')
+              # cit chooses dos/auto by default for D71/D81; compare its cc1541 strategy
+              line=$(echo "$line" | sed 's/@ID2A@/12/g; s/@ID3D@/12/g; s/^ *P /P --alloc cc1541 /')
           fi
           eval "set -- $(echo "$line" | sed 's/^ *P//')"
           "$prog" "$@" >> out.txt 2>&1
