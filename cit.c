@@ -20,7 +20,7 @@
 * SOFTWARE.
 *******************************************************************************/
 
-#define VERSION "4.2"
+#define VERSION "0.1" /* CIT, based on cc1541 4.2 */
 
 #define _CRT_SECURE_NO_WARNINGS /* avoid security warnings for MSVC */
 
@@ -327,11 +327,12 @@ static int dir_error       = DIR_OK; /* directory has an error */
 static void
 usage(void)
 {
-    printf("\n*** This is cc1541 version " VERSION " built on " __DATE__ " ***\n\n");
-    printf("Usage: cc1541 [options] image.[d64|d71|d81]\n\n");
+    printf("\n*** This is CIT (Commodore Image Tools) version " VERSION " built on " __DATE__ " ***\n");
+    printf("*** based on cc1541 4.2 by JackAsser, Krill, Claus and Bjoern Esser ***\n\n");
+    printf("Usage: cit [options] image.[d64|d71|d81]\n\n");
     printf("Disk Related:\n");
     printf("============\n");
-    printf("-n diskname   Disk name, default='cc1541'.\n");
+    printf("-n diskname   Disk name, default='cit'.\n");
     printf("-i id         Disk ID, default='00 2a'.\n");
     printf("-4            Use tracks 35-40 with SPEED DOS BAM formatting.\n");
     printf("-5            Use tracks 35-40 with DOLPHIN DOS BAM formatting.\n");
@@ -417,8 +418,7 @@ usage(void)
     printf("-a            Print command line options that would create the same directory as\n");
     printf("              the one in the given image (for directory art import).\n");
     printf("\n");
-    printf("Find a more extensive online documentation here:\n");
-    printf("https://acoustic-velocity.com/cc1541\n");
+    printf("Project page: https://github.com/MacGyver4B/CIT\n");
     printf("\n");
 
     exit(-1);
@@ -4819,7 +4819,7 @@ main(int argc, char* argv[])
     image_type type = IMAGE_D64;
     char* imagepath = NULL;
     char* filename_g64 = NULL;
-    unsigned char* header  = (unsigned char*)"cc1541";
+    unsigned char* header  = (unsigned char*)"cit";
     unsigned char* id      = (unsigned char*)"00#a02a";
     unsigned char* bam_message = NULL;
     int dirtracksplit = 1;

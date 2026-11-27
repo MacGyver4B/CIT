@@ -1,6 +1,6 @@
-# CIT - Commodore Image Tool #
+# CIT - Commodore Image Tools #
 
-CIT is going to be a tool for Commodore disk images of the IEEE drives
+CIT (program name `cit`) is going to be a tool for Commodore disk images of the IEEE drives
 as well: D64 (2031/4040), D67 (2040), D80 (8050), D82 (8250/SFD-1001)
 and D60/D90 (D9060/D9090 hard disks), with folder <-> image conversion
 using x00 (P00/S00/U00/R00) files.
@@ -12,6 +12,8 @@ available; version 4.2 is preserved here unchanged as the first commit
 
 Builds: GitHub Actions workflow "build" (started by hand) produces
 Windows, Linux and macOS binaries; locally `make` and `make check`.
+Visual Studio users can create a project from the sources; project files
+are not kept in the repository.
 
 ---
 

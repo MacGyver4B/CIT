@@ -184,8 +184,8 @@ main(int argc, char* argv[])
     const int test_pad = 3; /* Decimal digits of the test counter */
 
     if (argc != 2) {
-        printf("Test suite for cc1541\n");
-        printf("Usage: test_cc1541 <path to cc1541 binary>\n");
+        printf("Test suite for cit\n");
+        printf("Usage: test_cit <path to cit binary>\n");
         return(-1);
     }
     if (stat(argv[1], &st)) {

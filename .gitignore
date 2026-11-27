@@ -11,19 +11,19 @@
 *.rej
 
 # Compiled applications
-/cc1541
-/cc1541_asan
-/cc1541.exe
-/test_cc1541
-/test_cc1541.exe
+/cit
+/cit_asan
+/cit.exe
+/test_cit
+/test_cit.exe
 
 # Source tarball
-cc1541-*.tar*
-cc1541-*.zip
+cit-*.tar*
+cit-*.zip
 
 # Manpage
-/cc1541.1
-/cc1541.1.txt
+/cit.1
+/cit.1.txt
 
 # MacOS metadata
 .DS_Store

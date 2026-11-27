@@ -1,16 +1,16 @@
-CC1541_CFLAGS = -std=c99 -pipe -O2 -Wall -Wextra -pedantic -Wno-error=date-time
+CIT_CFLAGS = -std=c99 -pipe -O2 -Wall -Wextra -pedantic -Wno-error=date-time
 
-ALL_TARGETS = cc1541
+ALL_TARGETS = cit
 
 ifneq ($(ENABLE_MAN),)
 ALL_TARGETS += man
 endif
 
 ifneq ($(ENABLE_WERROR),)
-CC1541_CFLAGS += -Werror
+CIT_CFLAGS += -Werror
 endif
 
-override CFLAGS := $(CC1541_CFLAGS) $(CFLAGS)
+override CFLAGS := $(CIT_CFLAGS) $(CFLAGS)
 
 prefix ?= /usr/local
 bindir ?= $(prefix)/bin
@@ -18,78 +18,78 @@ mandir ?= $(prefix)/share/man
 
 INSTALL ?= install
 
-VERSION := $(shell grep 'define VERSION' cc1541.c | cut -d\" -f2)
+VERSION := $(shell grep 'define VERSION' cit.c | cut -d\" -f2)
 
-CC1541_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h *.in *.sln *.vcxproj* LICENSE* README*)
+CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h *.in LICENSE* README*)
 
 all: $(ALL_TARGETS)
 
-cc1541.o: cc1541.c
+cit.o: cit.c
 
-cc1541: cc1541.o
+cit: cit.o
 
-cc1541.1.txt: cc1541.1.txt.in
-	sed -e "s/@@VERSION@@/$(VERSION)/g" < cc1541.1.txt.in > cc1541.1.txt
+cit.1.txt: cit.1.txt.in
+	sed -e "s/@@VERSION@@/$(VERSION)/g" < cit.1.txt.in > cit.1.txt
 
-cc1541.1: cc1541.1.txt
-	a2x -d manpage -f manpage cc1541.1.txt
+cit.1: cit.1.txt
+	a2x -d manpage -f manpage cit.1.txt
 
-man: cc1541.1
+man: cit.1
 
-test_cc1541.o: test_cc1541.c
+test_cit.o: test_cit.c
 
-test_cc1541: test_cc1541.o
+test_cit: test_cit.o
 
-check: cc1541 test_cc1541
-	./test_cc1541 ./cc1541
+check: cit test_cit
+	./test_cit ./cit
 
 test: check
 
-cc1541_asan: cc1541.c
+cit_asan: cit.c
 	$(CC) -g -fsanitize=address -fsanitize=undefined -o $@ $<
 
-asantest: cc1541_asan test_cc1541
-	./test_cc1541 ./cc1541_asan
+asantest: cit_asan test_cit
+	./test_cit ./cit_asan
 
 install: all
-	$(INSTALL) -Dpm 0755 ./cc1541 $(DESTDIR)$(bindir)/cc1541
+	$(INSTALL) -Dpm 0755 ./cit $(DESTDIR)$(bindir)/cit
 ifneq ($(ENABLE_MAN),)
-	$(INSTALL) -Dpm 0644 ./cc1541.1 $(DESTDIR)$(mandir)/man1/cc1541.1
+	$(INSTALL) -Dpm 0644 ./cit.1 $(DESTDIR)$(mandir)/man1/cit.1
 endif
 
-cc1541-$(VERSION).tar: $(CC1541_SRC)
-	rm -rf cc1541-$(VERSION)/ *~ README.md.T
+cit-$(VERSION).tar: $(CIT_SRC)
+	rm -rf cit-$(VERSION)/ *~ README.md.T
 	$(eval $@_TMP := $(shell mktemp -d))
-	mkdir -p $($@_TMP)/cc1541-$(VERSION)
-	cp -a $(CC1541_SRC) $($@_TMP)/cc1541-$(VERSION)/
-	chmod 0644 $($@_TMP)/cc1541-$(VERSION)/*
-	tar cf cc1541-$(VERSION).tar -C$($@_TMP) cc1541-$(VERSION)/
+	mkdir -p $($@_TMP)/cit-$(VERSION)
+	cp -a $(CIT_SRC) $($@_TMP)/cit-$(VERSION)/
+	chmod 0644 $($@_TMP)/cit-$(VERSION)/*
+	tar cf cit-$(VERSION).tar -C$($@_TMP) cit-$(VERSION)/
 	rm -rf $($@_TMP)
 
-cc1541-$(VERSION).tar.bz2: cc1541-$(VERSION).tar
-	bzip2 -9cz < cc1541-$(VERSION).tar > cc1541-$(VERSION).tar.bz2
+cit-$(VERSION).tar.bz2: cit-$(VERSION).tar
+	bzip2 -9cz < cit-$(VERSION).tar > cit-$(VERSION).tar.bz2
 
-cc1541-$(VERSION).tar.gz: cc1541-$(VERSION).tar
-	gzip -9c < cc1541-$(VERSION).tar > cc1541-$(VERSION).tar.gz
+cit-$(VERSION).tar.gz: cit-$(VERSION).tar
+	gzip -9c < cit-$(VERSION).tar > cit-$(VERSION).tar.gz
 
-cc1541-$(VERSION).tar.xz: cc1541-$(VERSION).tar
-	xz -ce < cc1541-$(VERSION).tar > cc1541-$(VERSION).tar.xz
+cit-$(VERSION).tar.xz: cit-$(VERSION).tar
+	xz -ce < cit-$(VERSION).tar > cit-$(VERSION).tar.xz
 
-cc1541-$(VERSION).zip: $(CC1541_SRC)
-	rm -rf cc1541-$(VERSION)/ *~ README.md.T
+cit-$(VERSION).zip: $(CIT_SRC)
+	rm -rf cit-$(VERSION)/ *~ README.md.T
 	$(eval $@_SRC := $(shell pwd))
 	$(eval $@_TMP := $(shell mktemp -d))
-	mkdir -p $($@_TMP)/cc1541-$(VERSION)
-	cp -a $(CC1541_SRC) $($@_TMP)/cc1541-$(VERSION)/
-	chmod 0644 $($@_TMP)/cc1541-$(VERSION)/*
+	mkdir -p $($@_TMP)/cit-$(VERSION)
+	cp -a $(CIT_SRC) $($@_TMP)/cit-$(VERSION)/
+	chmod 0644 $($@_TMP)/cit-$(VERSION)/*
 	cd $($@_TMP) && \
-	zip -9qr $($@_SRC)/cc1541-$(VERSION).zip cc1541-$(VERSION)/
+	zip -9qr $($@_SRC)/cit-$(VERSION).zip cit-$(VERSION)/
 	rm -rf $($@_TMP)
 
-dist-bz2: cc1541-$(VERSION).tar.bz2
-dist-gz:  cc1541-$(VERSION).tar.gz
-dist-xz:  cc1541-$(VERSION).tar.xz
-dist-zip: cc1541-$(VERSION).zip
+dist-bz2: cit-$(VERSION).tar.bz2
+dist-gz:  cit-$(VERSION).tar.gz
+dist-xz:  cit-$(VERSION).tar.xz
+dist-zip: cit-$(VERSION).zip
 dist-all: dist-bz2 dist-gz dist-xz dist-zip
 
 dist: dist-gz dist-zip
@@ -97,21 +97,21 @@ dist: dist-gz dist-zip
 dist-check: dist
 	$(eval $@_TMP := $(shell mktemp -d))
 	mkdir -p $($@_TMP)
-	tar xf cc1541-$(VERSION).tar.gz -C $($@_TMP)
-	$(MAKE) -C $($@_TMP)/cc1541-$(VERSION)/ all check
+	tar xf cit-$(VERSION).tar.gz -C $($@_TMP)
+	$(MAKE) -C $($@_TMP)/cit-$(VERSION)/ all check
 	rm -rf $($@_TMP)
 
-codestyle: cc1541.c test_cc1541.c
-	astyle --style=kr -n -s -z2 cc1541.c test_cc1541.c
+codestyle: cit.c test_cit.c
+	astyle --style=kr -n -s -z2 cit.c test_cit.c
 
-wrap: cc1541.1.txt.in LICENSE.txt README.md
+wrap: cit.1.txt.in LICENSE.txt README.md
 	for f in $^; do \
 	  fold -s -w 76 < $$f | perl -pe 's/[\t\040]+$$//' > $$f.T; \
 	  mv -f $$f.T $$f; \
 	done
 
 clean:
-	rm -rf cc1541-$(VERSION)/ *~ README.md.T *.o *.orig cc1541 cc1541_asan test_cc1541 cc1541-$(VERSION).* cc1541.1 cc1541.1.txt
+	rm -rf cit-$(VERSION)/ *~ README.md.T *.o *.orig cit cit_asan test_cit cit-$(VERSION).* cit.1 cit.1.txt
 
 .PHONY: all check clean codestyle dist dist-all dist-bz2 dist-check dist-gz dist-xz dist-zip install man test wrap
 

@@ -17,16 +17,16 @@ jobs:
           sudo apt-get install -y gcc-mingw-w64-x86-64 wine64
       - name: Build
         run: |
-          make -j2 cc1541 test_cc1541 CC=x86_64-w64-mingw32-gcc LDFLAGS="-static -s" ENABLE_WERROR=1
-          mv cc1541 cc1541.exe
-          mv test_cc1541 test_cc1541.exe
+          make -j2 cit test_cit CC=x86_64-w64-mingw32-gcc LDFLAGS="-static -s" ENABLE_WERROR=1
+          mv cit cit.exe
+          mv test_cit test_cit.exe
       - name: Test (Wine)
-        run: WINEDEBUG=-all wine64 ./test_cc1541.exe ./cc1541.exe
+        run: WINEDEBUG=-all wine64 ./test_cit.exe ./cit.exe
       - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: |
-            cc1541.exe
+            cit.exe
             LICENSE.txt
             README.md
 
@@ -42,7 +42,7 @@ jobs:
         with:
           name: linux
           path: |
-            cc1541
+            cit
             LICENSE.txt
             README.md
 
@@ -56,6 +56,6 @@ jobs:
         with:
           name: macos
           path: |
-            cc1541
+            cit
             LICENSE.txt
             README.md
