@@ -40,8 +40,8 @@ printf '\000' > "$IN/zero.bin"
 N='-n TESTDISK -i 12#a02a'
 # D71/D81: CIT takes only the 2 id characters, the rest is set by the format.
 # cc1541 gets the complete standard id, so both images must still be equal.
-N2A='-n TESTDISK -i @ID2A@'
-N3D='-n TESTDISK -i @ID3D@'
+N2A='-m -n TESTDISK -i @ID2A@'   # -m: cit checks Krill hashes on D41 only
+N3D='-m -n TESTDISK -i @ID3D@'
 CASES="
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64
 P $N -4 -f AAA -w big.prg -f BBB -w big.prg -f CCC -w big.prg x.d64
@@ -68,7 +68,7 @@ P $N3D -f AAA -w big.prg -f BBB -w small.prg x.d81
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -V x.d64; P -v x.d64; P -a x.d64
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -X AAA x.d64; P -X 'B*' x.d64
 P $N -f AAA -w mid.prg -f BBB -w small.prg x.d64; P -p 18,1,2,zero.bin x.d64; P -R 1 x.d64
-P $N3D -f AAA -w mid.prg -f BBB -w small.prg x.d81; P -p 40,3,2,zero.bin x.d81; P -R 3 x.d81
+P $N3D -f AAA -w mid.prg -f BBB -w small.prg x.d81; P -m -p 40,3,2,zero.bin x.d81; P -m -R 3 x.d81
 P $N -U 1 -f ABC#c1#c2 -w small.prg x.d64
 P $N -f AAA -w nonexistent.prg x.d64
 P $N2A -4 -f AAA -w small.prg x.d71

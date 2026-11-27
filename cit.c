@@ -1529,9 +1529,19 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
         if (((file->filetype & 0xf) != FILETYPEDEL) && file->loop_file) {
             int track, sector, offset;
             int index;
-            if (find_existing_file(type, image, file->plocalname, &index, &track, &sector, &offset)) {
+            bool found = false;
+            int b = 0;
+            if (file->loop_target > 0) {
+                /* points to a file written in this run (--convert): its own entry */
+                imagefile *target = files + file->loop_target - 1;
+                b = linear_sector(type, dirtrack(type), target->direntrysector) * BLOCKSIZE + target->direntryoffset;
+                found = true;
+            } else if (find_existing_file(type, image, file->plocalname, &index, &track, &sector, &offset)) {
+                b = linear_sector(type, track, sector) * BLOCKSIZE + offset;
+                found = true;
+            }
+            if (found) {
                 /* read track/sector and nrSectors from disk image */
-                int b = linear_sector(type, track, sector) * BLOCKSIZE + offset;
                 file->track = image[b + FILETRACKOFFSET];
                 file->sector = image[b + FILESECTOROFFSET];
                 file->nrSectors = image[b + FILEBLOCKSLOOFFSET] + (image[b + FILEBLOCKSHIOFFSET] << 8);
@@ -2308,7 +2318,7 @@ main(int argc, char* argv[])
                 }
                 set_header = 1;
             }
-            add_files_from_image(stype, simage, files, &num_files, defaultSectorInterleave, default_first_sector_new_track);
+            add_files_from_image(stype, simage, files, &num_files, defaultSectorInterleave, default_first_sector_new_track, !target_exists);
             free(simage); /* the files have their own copies of the data */
         }
     }
@@ -2560,7 +2570,8 @@ main(int argc, char* argv[])
         retval |= generate_uniformat_g64(image, filename_g64);
     }
 
-    if (!ignore_collision && check_hashes(type, image)) {
+    /* Krill's loader runs on the 1541 only: the check is for D41 images */
+    if (!ignore_collision && ((type == IMAGE_D64 && !d40) || extended) && check_hashes(type, image)) {
         fprintf(stderr, "\nERROR: Filename hash collision detected; image is not compatible with Krill's loader. Use -m to ignore this error.\n");
         retval = -1;
     }

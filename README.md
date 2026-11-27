@@ -106,8 +106,17 @@ same is refused.
 A new target is a folder unless it has an image extension or `-D` is
 given; an existing path tells itself.
 
-Not copied, with a warning: GEOS files, unclosed files, broken block
-chains, used blocks that belong to no file, error tables.
+Every directory entry is taken over as it is, so that directory art looks
+the same: the type byte (DEL, locked ...), the 16 raw name bytes with
+control codes, the block count shown, entries without blocks, several
+entries for the same blocks (they share one copy) and equal names. Unclosed
+entries keep only their directory entry. Not copied, with a warning: GEOS
+files, broken block chains, used blocks that belong to no file, error
+tables. Unpacking to a folder skips entries without own blocks for now.
+
+Also changed from cc1541: `-V` accepts several entries for the same blocks
+(the start block was overwritten while marking the chain), and the filename
+hash check for Krill's loader only runs on D41 images.
 
 ### REL files ###
 

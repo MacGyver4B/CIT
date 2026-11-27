@@ -176,5 +176,21 @@ rel_test() {
 }
 rel_test
 
+# directory art: --convert keeps every entry as it is (type byte, raw name,
+# block count shown, entries without blocks, several entries for the same
+# blocks, equal names); -V accepts entries that share blocks
+art_test() {
+    rm -rf at && mkdir at && cd at || exit 2
+    head -c 3000 /dev/urandom > prog
+    "$CIT" -n "#12demo#92" -i ab -T DEL -f "----------------" -L -f spiel -w prog \
+        -T DEL -N -f "----------------" -L -B 99 -T DEL -f "#12 menue #92" -L -T 194 -f gesperrt -w prog \
+        -f kopie -l spiel -T DEL -N -f "----------------" -L src.d64 > /dev/null 2>&1
+    "$CIT" --convert src.d64 dst.d82 > /dev/null 2>&1
+    if "$CIT" -V dst.d82 > /dev/null 2>&1; then ok; else bad "directory art: -V failed"; fi
+    if [ "$("$CIT" src.d64 | sed -n '4,10p')" = "$("$CIT" dst.d82 | sed -n '4,10p')" ]; then ok; else bad "directory art: listing differs after --convert"; fi
+    cd .. && rm -rf at
+}
+art_test
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

@@ -155,10 +155,21 @@ source_header(image_type type, const unsigned char *image, char *header, char *i
 }
 
 /* one directory entry of the source, NULL at the end */
+typedef enum {
+    ENTRY_FILE,                 /* an entry with its own blocks */
+    ENTRY_DUMMY,                /* no blocks (directory art, separators) */
+    ENTRY_LINK                  /* points to the blocks of an earlier entry */
+} entry_kind;
+
 typedef struct {
-    unsigned char filetype;
+    entry_kind kind;
+    unsigned char filetype;     /* as in the entry: DEL, locked, unclosed ... */
     unsigned char name[FILENAMEMAXSIZE];
     unsigned char record_length;
+    int shown_blocks;           /* block count as shown in the directory */
+    int link;                   /* ENTRY_LINK: index of the entry it points to */
+    int start_track;
+    int start_sector;
     unsigned char *data;
     int size;
 } source_file;
@@ -188,10 +199,6 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
         }
         char aname[3 * FILENAMEMAXSIZE + 1];
         petscii2ascii((unsigned char *)e + FILENAMEOFFSET, aname, FILENAMEMAXSIZE, false);
-        if (!(ft & 0x80)) {
-            fprintf(stderr, "WARNING: Unclosed file \"%s\" is not copied\n", aname);
-            continue;
-        }
         if (e[0x18] != 0) {
             fprintf(stderr, "WARNING: GEOS file \"%s\" is not copied\n", aname);
             continue;
@@ -200,11 +207,41 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
             fprintf(stderr, "ERROR: Too many files in the source image\n");
             exit(-1);
         }
+        /* every entry is taken over as it is: type byte, the raw name and the
+           block count shown, so that directory art looks the same */
         source_file *f = &files[n];
+        memset(f, 0, sizeof *f);
         f->filetype = ft;
         memcpy(f->name, e + FILENAMEOFFSET, FILENAMEMAXSIZE);
         f->record_length = e[0x17];
-        f->size = read_chain(type, image, e[FILETRACKOFFSET], e[FILESECTOROFFSET], &f->data, used);
+        f->shown_blocks = e[FILEBLOCKSLOOFFSET] | (e[FILEBLOCKSHIOFFSET] << 8);
+        f->start_track = e[FILETRACKOFFSET];
+        f->start_sector = e[FILESECTOROFFSET];
+        if (f->start_track == 0 || !(ft & 0x80) || (ft & 7) == FILETYPEDEL) {
+            /* no blocks, unclosed or DEL: the entry only */
+            if (f->start_track != 0 && !(ft & 0x80)) {
+                fprintf(stderr, "WARNING: Unclosed file \"%s\": only the directory entry is copied\n", aname);
+            }
+            f->kind = ENTRY_DUMMY;
+            n++;
+            continue;
+        }
+        int same = -1;
+        for (int k = 0; k < n; k++) {
+            if (files[k].kind == ENTRY_FILE && files[k].start_track == f->start_track && files[k].start_sector == f->start_sector) {
+                same = k;
+                break;
+            }
+        }
+        if (same >= 0) {
+            /* a second entry for the same blocks (directory art) */
+            f->kind = ENTRY_LINK;
+            f->link = same;
+            n++;
+            continue;
+        }
+        f->kind = ENTRY_FILE;
+        f->size = read_chain(type, image, f->start_track, f->start_sector, &f->data, used);
         if (f->size < 0) {
             fprintf(stderr, "WARNING: File \"%s\" has a broken block chain and is not copied\n", aname);
             free(f->data);
@@ -247,10 +284,11 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
 /* adds the files of a source image to the files to write */
 int
 add_files_from_image(image_type type, const unsigned char *image, imagefile *files, int *num_files,
-                     int sector_interleave, int first_sector_new_track)
+                     int sector_interleave, int first_sector_new_track, bool new_image)
 {
     source_file *src;
     int n = read_source_files(type, image, &src);
+    int first = *num_files;
     for (int i = 0; i < n; i++) {
         if (*num_files >= MAXNUMFILES) {
             fprintf(stderr, "ERROR: Too many files\n");
@@ -264,18 +302,35 @@ add_files_from_image(image_type type, const unsigned char *image, imagefile *fil
         }
         petscii2ascii(src[i].name, aname, FILENAMEMAXSIZE, false);
         f->alocalname = (unsigned char *)aname;
+        f->name_alloc = aname;
         memcpy(f->pfilename, src[i].name, FILENAMEMAXSIZE);
         f->filetype = src[i].filetype;
         f->sectorInterleave = sector_interleave;
         f->first_sector_new_track = first_sector_new_track;
-        f->nrSectorsShown = -1;
+        f->nrSectorsShown = src[i].shown_blocks;
         f->direntryindex = -1;
-        f->data = src[i].data;
-        f->data_size = src[i].size;
-        f->has_data = true;
-        f->data_alloc = src[i].data;
-        f->name_alloc = aname;
-        f->record_length = src[i].record_length;
+        /* in a new image every entry gets its own slot, so that equal names
+           (separators of directory art) do not replace each other */
+        f->force_new = new_image || src[i].kind != ENTRY_FILE;
+        switch (src[i].kind) {
+        case ENTRY_DUMMY:
+            f->no_file = true;
+            f->nrSectors = 0;
+            break;
+        case ENTRY_LINK:
+            f->loop_file = true;
+            f->sectorInterleave = 0;
+            f->loop_target = first + src[i].link + 1;
+            memcpy(f->plocalname, src[src[i].link].name, FILENAMEMAXSIZE);
+            break;
+        case ENTRY_FILE:
+            f->data = src[i].data;
+            f->data_size = src[i].size;
+            f->has_data = true;
+            f->data_alloc = src[i].data;
+            f->record_length = src[i].record_length;
+            break;
+        }
         (*num_files)++;
     }
     free(src);
@@ -314,7 +369,12 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
     }
     source_file *src;
     int n = read_source_files(type, image, &src);
+    int skipped = 0;
     for (int i = 0; i < n; i++) {
+        if (src[i].kind != ENTRY_FILE) {
+            skipped++;
+            continue;
+        }
         char name[3 * FILENAMEMAXSIZE + 16];
         x00_name(name, sizeof name, i + 1, src[i].name, src[i].filetype);
         size_t plen = strlen(folder) + strlen(name) + 2;
@@ -346,6 +406,10 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
         }
         free(path);
         free(src[i].data);
+    }
+    if (skipped > 0) {
+        fprintf(stderr, "WARNING: %d directory entr%s without own blocks (directory art, links) not unpacked yet\n",
+                skipped, skipped == 1 ? "y" : "ies");
     }
     free(src);
     return n;

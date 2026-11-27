@@ -926,8 +926,9 @@ validate(image_type type, unsigned char* image)
                         fprintf(stderr, "ERROR: validation failed, collision with existing file in file sector chain at track %d, sector %d\n", error_track, error_sector);
                         exit(-1);
                     }
-                    atab[linear_sector(type, start_track, start_sector)] = FILESTART;
                     mark_sector_chain(type, image, atab, start_track, start_sector, error_track, error_sector, ALLOCATED);
+                    /* after marking the chain: further entries may start here (loop files) */
+                    atab[linear_sector(type, start_track, start_sector)] = FILESTART;
                     if (filetype == FILETYPEREL) {
                         /* the index (side sectors) must list exactly the data blocks */
                         const unsigned char *entry = image + dirblock + entryOffset;
