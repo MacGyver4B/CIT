@@ -296,7 +296,7 @@ unsigned char crc8(unsigned char value);
 unsigned long long write_transwarp_file(image_type type, unsigned char *image, imagefile *file, unsigned char *filedata, int *filesize, unsigned int version, bool transwarp_bootfile_fits_on_dir_track);
 void optimize_transwarp_allocation(image_type type, unsigned char *image, imagefile *files, int num_files, int order[]);
 
-/* g64.c: G64 output */
+/* raw.c: track level images (G64 output) */
 int generate_uniformat_g64(unsigned char* image, const char *imagepath);
 
 /* undelete.c: restoring deleted and formatted files */

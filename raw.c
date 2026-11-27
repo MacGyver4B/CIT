@@ -20,7 +20,8 @@
 * SOFTWARE.
 *******************************************************************************/
 
-/* g64.c: G64 output */
+/* raw.c: track level images (GCR bit stream): G64 output today, planned:
+   G71, reading G64/G71/NIB, G80/G82 for the IEEE drives */
 
 #include "cit.h"
 
