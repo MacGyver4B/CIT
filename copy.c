@@ -353,31 +353,28 @@ x00_name(char *out, size_t len, int number, const unsigned char *name, int filet
     snprintf(out, len, "%03d_%s.%c00", number, aname, (t <= 4) ? letter[t] : 'u');
 }
 
-/* PETSCII name in petcat notation: printable characters as they are,
-   everything else as {$xx} */
-static void
-petcat_name(char *out, const unsigned char *p, int len)
+/* blocks free as the directory shows them: all free blocks except the
+   directory track (as check_bam counts them) */
+static int
+count_free_blocks(image_type type, const unsigned char *image)
 {
     int n = 0;
-    for (int i = 0; i < len && p[i] != FILENAMEEMPTYCHAR; i++) {
-        unsigned char c = p[i];
-        if (c >= 0x20 && c < 0x40) {
-            out[n++] = c;
-        } else if (c >= 0x41 && c <= 0x5a) {
-            out[n++] = c + 0x20;          /* unshifted letters list as lower case */
-        } else if (c >= 0xc1 && c <= 0xda) {
-            out[n++] = c - 0x80;          /* shifted letters as upper case */
-        } else {
-            n += sprintf(out + n, "{$%02x}", c);
+    for (unsigned int t = 1; t <= image_num_tracks(type); t++) {
+        if ((int)t == dirtrack(type)) {
+            continue;
+        }
+        for (int s = 0; s < num_sectors(type, t); s++) {
+            n += is_sector_free(type, image, t, s, 0, 0) ? 1 : 0;
         }
     }
-    out[n] = 0;
+    return n;
 }
 
-/* directory.txt: the directory as a listing, for reading only (directory
-   art, block counts shown, entries without blocks, links); not read back */
+/* directory.pet: the directory listing as the drive sends it, PETSCII 1:1
+   with CR line ends (directory art, block counts shown, locked, unclosed);
+   for reading with a PETSCII viewer, it is not read back */
 static void
-write_directory_txt(image_type type, const unsigned char *image, const char *folder, const source_file *src, int n)
+write_directory_pet(image_type type, const unsigned char *image, const char *folder, const source_file *src, int n)
 {
     size_t plen = strlen(folder) + 16;
     char *path = malloc(plen);
@@ -385,35 +382,45 @@ write_directory_txt(image_type type, const unsigned char *image, const char *fol
         fprintf(stderr, "ERROR: Memory allocation error\n");
         exit(-1);
     }
-    snprintf(path, plen, "%s/directory.txt", folder);
-    FILE *f = fopen(path, "w");
+    snprintf(path, plen, "%s/directory.pet", folder);
+    FILE *f = fopen(path, "wb");
     if (f == NULL) {
         fprintf(stderr, "ERROR: Could not write %s\n", path);
         exit(-1);
     }
-    static const char *types[] = { "del", "seq", "prg", "usr", "rel", "???", "???", "???" };
+    /* "prg" etc. in PETSCII: the codes of the upper case ASCII letters */
+    static const char *types[] = { "DEL", "SEQ", "PRG", "USR", "REL", "???", "???", "???" };
     const unsigned char *h = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
-    char name[6 * FILENAMEMAXSIZE + 1];
-    char id[6 * 5 + 1];
-    petcat_name(name, h + fmt(type)->header_offset, FILENAMEMAXSIZE);
-    petcat_name(id, h + fmt(type)->id_offset, 5);
-    fprintf(f, "0 \"%s\" %s\n", name, id);
+    /* header line: 0 "name" id, the name and id reversed like on the screen */
+    fputs("0 \x12\"", f);
+    fwrite(h + fmt(type)->header_offset, 1, FILENAMEMAXSIZE, f);
+    fputs("\" ", f);
+    fwrite(h + fmt(type)->id_offset, 1, 5, f);
+    fputs("\x92\r", f);
     for (int i = 0; i < n; i++) {
-        petcat_name(name, src[i].name, FILENAMEMAXSIZE);
-        char q[6 * FILENAMEMAXSIZE + 3];
-        snprintf(q, sizeof q, "\"%s\"", name);
-        fprintf(f, "%-5d %-18s %c%s%c", src[i].shown_blocks, q,
-                (src[i].filetype & 0x80) ? ' ' : '*', types[src[i].filetype & 7],
-                (src[i].filetype & 0x40) ? '<' : ' ');
-        if (src[i].kind == ENTRY_DUMMY) {
-            fprintf(f, "  ; %03d no blocks", i + 1);
-        } else if (src[i].kind == ENTRY_LINK) {
-            fprintf(f, "  ; %03d same blocks as %03d", i + 1, src[i].link + 1);
-        } else {
-            fprintf(f, "  ; %03d", i + 1);
+        char blocks[8];
+        int bl = snprintf(blocks, sizeof blocks, "%d", src[i].shown_blocks);
+        fwrite(blocks, 1, bl, f);
+        for (int k = bl; k < 5; k++) {
+            fputc(' ', f);
         }
-        fprintf(f, "\n");
+        /* the name up to the first A0 in quotes, the rest behind it, as listed */
+        int len = 0;
+        while (len < FILENAMEMAXSIZE && src[i].name[len] != FILENAMEEMPTYCHAR) {
+            len++;
+        }
+        fputc('"', f);
+        fwrite(src[i].name, 1, len, f);
+        fputc('"', f);
+        for (int k = len; k < FILENAMEMAXSIZE; k++) {
+            fputc((src[i].name[k] == FILENAMEEMPTYCHAR) ? ' ' : src[i].name[k], f);
+        }
+        fputc((src[i].filetype & 0x80) ? ' ' : '*', f);
+        fputs(types[src[i].filetype & 7], f);
+        fputc((src[i].filetype & 0x40) ? '<' : ' ', f);
+        fputc('\r', f);
     }
+    fprintf(f, "%d BLOCKS FREE.\r", count_free_blocks(type, image));
     fclose(f);
     free(path);
 }
@@ -434,7 +441,7 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
     }
     source_file *src;
     int n = read_source_files(type, image, &src);
-    write_directory_txt(type, image, folder, src, n);
+    write_directory_pet(type, image, folder, src, n);
     for (int i = 0; i < n; i++) {
         /* entries without blocks: 0 byte x00 files; links: a copy of the data */
         const source_file *data = (src[i].kind == ENTRY_LINK) ? &src[src[i].link] : &src[i];
@@ -497,7 +504,7 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
     int count = 0;
     struct dirent *de;
     while ((de = readdir(d)) != NULL) {
-        if (de->d_name[0] == '.' || strcasecmp(de->d_name, "directory.txt") == 0) {
+        if (de->d_name[0] == '.' || strcasecmp(de->d_name, "directory.pet") == 0) {
             continue; /* hidden files; the listing written by unpacking */
         }
         names = realloc(names, sizeof(char *) * (count + 1));

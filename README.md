@@ -99,9 +99,10 @@ same is refused.
 * image -> folder: PC64 x00 files (P00/S00/U00/R00/D00), numbered in
   directory order (`001_name.p00`) so that the order survives; entries
   without blocks (directory art) as x00 files without data, entries for
-  the same blocks as copies; `directory.txt` lists the directory with the
-  details x00 cannot hold (block counts shown, locked, links) - for
-  reading only, it is not read back
+  the same blocks as copies; `directory.pet` holds the directory listing
+  as the drive sends it, PETSCII 1:1 with CR line ends, with what x00
+  cannot hold (block counts shown, locked, unclosed) - for a PETSCII
+  viewer, it is not read back
 * folder -> image: x00 files with the name and type of their header;
   plain files as `-X` writes them (`name.prg`, `.seq`, `.usr`,
   `name[rs64].rel` with the record length); anything else as PRG named
