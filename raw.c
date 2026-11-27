@@ -21,7 +21,9 @@
 *******************************************************************************/
 
 /* raw.c: track level images (GCR bit stream): G64 output today, planned:
-   G71, reading G64/G71/NIB, G80/G82 for the IEEE drives */
+   G71, reading G64/G71/NIB, G80/G82 for the IEEE drives.
+   Placeholder: recovering damaged disks is left to flux tools (Greaseweazle,
+   KryoFlux, SuperCard Pro); CIT reads their G64/NIB results. */
 
 #include "cit.h"
 
