@@ -52,10 +52,10 @@
 #endif
 
 #define DIRENTRIESPERBLOCK     8
+#define MAXTRACKS              80   /* largest image (D81) */
+#define MAXSECTORS             40   /* most sectors per track (D81) */
 #define DIRTRACK_D41_D71       18
-#define DIRTRACK_D81           40
-#define SECTORSPERTRACK_D81    40
-#define MAXNUMFILES_D81        ((SECTORSPERTRACK_D81 - 3) * DIRENTRIESPERBLOCK)
+#define MAXNUMFILES            ((MAXSECTORS - 3) * DIRENTRIESPERBLOCK) /* D81 directory */
 #define DIRENTRYSIZE           32
 #define BLOCKSIZE              256
 #define BLOCKOVERHEAD          2
@@ -90,13 +90,7 @@
 #define FILEBLOCKSHIOFFSET     31
 #define D64NUMBLOCKS           (664 + 19)
 #define D64SIZE                (D64NUMBLOCKS * BLOCKSIZE)
-#define D64SIZE_EXTENDED       (D64SIZE + 5 * 17 * BLOCKSIZE)
-#define D71SIZE                (D64SIZE * 2)
-#define D81SIZE                (D81NUMTRACKS * SECTORSPERTRACK_D81 * BLOCKSIZE)
 #define D64NUMTRACKS           35
-#define D64NUMTRACKS_EXTENDED  (D64NUMTRACKS + 5)
-#define D71NUMTRACKS           (D64NUMTRACKS * 2)
-#define D81NUMTRACKS           80
 #define BAM_OFFSET_SPEED_DOS   0xc0
 #define BAM_OFFSET_DOLPHIN_DOS 0xac
 #define DIRSLOTEXISTS          0
@@ -264,19 +258,62 @@ sectors_per_track[] = {
     /* 66-70 */ 17,17,17,17,17
 };
 
-static const int
-sectors_per_track_extended[] = {
-    /*  1-17 */ 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,
-    /* 18-24 */ 19,19,19,19,19,19,19,
-    /* 25-30 */ 18,18,18,18,18,18,
-    /* 31-35 */ 17,17,17,17,17,
-    /* 36-40 */ 17,17,17,17,17,
-    /* 41-57 */ 21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,21,
-    /* 58-64 */ 19,19,19,19,19,19,19,
-    /* 65-70 */ 18,18,18,18,18,18,
-    /* 71-75 */ 17,17,17,17,17,
-    /* 76-80 */ 17,17,17,17,17
+
+/*
+ * Format table: everything that describes the geometry and the layout of an
+ * image type lives here. Code that needs such a value asks the table instead
+ * of testing the image type.
+ *
+ * zone[]: sectors per track, valid up to and including last_track. Tracks
+ * count from 1. The zones of a double sided image cover both sides.
+ */
+#define MAXZONES 8
+
+typedef struct {
+    const char *name;           /* image type as shown to the user */
+    int num_tracks;             /* tracks of the whole image (both sides) */
+    int sides;                  /* 2: second side starts at num_tracks/2+1 */
+    struct {
+        int last_track;
+        int sectors;
+    } zone[MAXZONES];
+    int dir_track;              /* track with header, BAM and directory */
+    int first_dir_sector;       /* first directory sector on dir_track */
+    int last_bam_sector;        /* header and BAM: sectors 0..last_bam_sector */
+    int dir_interleave;         /* default interleave of directory sectors */
+    int header_offset;          /* disk name in the header sector */
+    int id_offset;              /* disk id (5 bytes incl. dos type) */
+    unsigned char dos_type;     /* format byte at offset 2, 0 = not checked */
+} format_t;
+
+static const format_t formats[] = {
+    [IMAGE_D64] = {
+        "D64", 35, 1, {{17, 21}, {24, 19}, {30, 18}, {35, 17}},
+        18, 1, 0, 3, 0x90, 0xa2, 0x41
+    },
+    [IMAGE_D64_EXTENDED_SPEED_DOS] = {
+        "D64 (40 tracks, SpeedDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
+        18, 1, 0, 3, 0x90, 0xa2, 0
+    },
+    [IMAGE_D64_EXTENDED_DOLPHIN_DOS] = {
+        "D64 (40 tracks, DolphinDOS BAM)", 40, 1, {{17, 21}, {24, 19}, {30, 18}, {40, 17}},
+        18, 1, 0, 3, 0x90, 0xa2, 0
+    },
+    [IMAGE_D71] = {
+        "D71", 70, 2, {{17, 21}, {24, 19}, {30, 18}, {35, 17}, {52, 21}, {59, 19}, {65, 18}, {70, 17}},
+        18, 1, 0, 3, 0x90, 0xa2, 0x41
+    },
+    [IMAGE_D81] = {
+        "D81", 80, 1, {{80, 40}},
+        40, 3, 2, 1, 0x04, 0x16, 0x44
+    },
 };
+
+static const format_t *
+fmt(image_type type)
+{
+    return &formats[type];
+}
 
 static int quiet           = 0;      /* global quiet flag */
 static int verbose         = 0;      /* global verbose flag */
@@ -422,61 +459,37 @@ filenamehash(const unsigned char *filename)
     return (hashhi << 8) | hashlo;
 }
 
-/* Returns the size of an image in bytes */
-static unsigned int
-image_size(image_type type)
-{
-    switch (type) {
-    case IMAGE_D64:
-        return D64SIZE;
-
-    case IMAGE_D64_EXTENDED_SPEED_DOS:
-    /* fall through */
-    case IMAGE_D64_EXTENDED_DOLPHIN_DOS:
-        return D64SIZE_EXTENDED;
-
-    case IMAGE_D71:
-        return D71SIZE;
-
-    case IMAGE_D81:
-        return D81SIZE;
-
-    default:
-        return 0;
-    }
-}
-
 /* Returns the number of tracks in an image */
 static unsigned int
 image_num_tracks(image_type type)
 {
-    switch (type) {
-    case IMAGE_D64:
-        return D64NUMTRACKS;
-
-    case IMAGE_D64_EXTENDED_SPEED_DOS:
-    /* fall through */
-    case IMAGE_D64_EXTENDED_DOLPHIN_DOS:
-        return D64NUMTRACKS_EXTENDED;
-
-    case IMAGE_D71:
-        return D71NUMTRACKS;
-
-    case IMAGE_D81:
-        return D81NUMTRACKS;
-
-    default:
-        return 0;
-    }
+    return fmt(type)->num_tracks;
 }
 
 /* Returns the number of sectors for a given track */
 static int
 num_sectors(image_type type, int track)
 {
-    return (type == IMAGE_D81) ? SECTORSPERTRACK_D81
-           : (((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) ? sectors_per_track_extended[track - 1]
-              : sectors_per_track[track - 1]);
+    const format_t *f = fmt(type);
+    for (int z = 0; z < MAXZONES && f->zone[z].last_track; z++) {
+        if (track <= f->zone[z].last_track) {
+            return f->zone[z].sectors;
+        }
+    }
+    return 0;
+}
+
+/* Returns the highest number of sectors on any track */
+static int
+max_sectors(image_type type)
+{
+    int max = 0;
+    for (int z = 0; z < MAXZONES && fmt(type)->zone[z].last_track; z++) {
+        if (fmt(type)->zone[z].sectors > max) {
+            max = fmt(type)->zone[z].sectors;
+        }
+    }
+    return max;
 }
 
 /* Returns the number of blocks in an image */
@@ -490,11 +503,25 @@ image_num_blocks(image_type type)
     return num_blocks;
 }
 
+/* Returns the size of an image in bytes (without error table) */
+static unsigned int
+image_size(image_type type)
+{
+    return image_num_blocks(type) * BLOCKSIZE;
+}
+
 /* Returns the directory track of an image */
 static int
 dirtrack(image_type type)
 {
-    return (type == IMAGE_D81) ? DIRTRACK_D81 : DIRTRACK_D41_D71;
+    return fmt(type)->dir_track;
+}
+
+/* Returns the first directory sector on the directory track */
+static int
+first_dir_sector(image_type type)
+{
+    return fmt(type)->first_dir_sector;
 }
 
 /* Converts an ASCII character to PETSCII */
@@ -870,7 +897,7 @@ print_filename(FILE *file, unsigned char* pfilename)
 static int
 linear_sector(image_type type, int track, int sector)
 {
-    if ((track < 1) || (track > ((type == IMAGE_D81) ? D81NUMTRACKS : ((type == IMAGE_D64) ? D64NUMTRACKS : (type == IMAGE_D71 ? D71NUMTRACKS : D64NUMTRACKS_EXTENDED))))) {
+    if ((track < 1) || (track > (int)image_num_tracks(type))) {
         return -1;
     }
 
@@ -1053,28 +1080,14 @@ mark_sector(image_type type, unsigned char* image, int track, int sector, int fr
 static int
 get_header_offset(image_type type)
 {
-    int offset;
-
-    if (type == IMAGE_D81) {
-        offset = 4;
-    } else {
-        offset = 0x90;
-    }
-    return offset;
+    return fmt(type)->header_offset;
 }
 
 /* Returns offset for id on directory track */
 static int
 get_id_offset(image_type type)
 {
-    int offset;
-
-    if (type == IMAGE_D81) {
-        offset = 0x16;
-    } else {
-        offset = 0xa2;
-    }
-    return offset;
+    return fmt(type)->id_offset;
 }
 
 /* Updates the directory with the given header, id and BAM message */
@@ -1195,16 +1208,16 @@ initialize_directory(image_type type, unsigned char* image, unsigned char* heade
     }
 
     /* first dir block */
-    unsigned int dirblock = linear_sector(type, dirtrack(type), (type == IMAGE_D81) ? 3 : 1) * BLOCKSIZE;
+    unsigned int dirblock = linear_sector(type, dirtrack(type), first_dir_sector(type)) * BLOCKSIZE;
     image[dirblock + SECTORLINKOFFSET] = 255;
-    mark_sector(type, image, dirtrack(type), (type == IMAGE_D81) ? 3 : 1 /* sector */, 0 /* not free */);
+    mark_sector(type, image, dirtrack(type), first_dir_sector(type), 0 /* not free */);
 
     if (shadowdirtrack > 0) {
-        dirblock = linear_sector(type, shadowdirtrack, (type == IMAGE_D81) ? 3 : 1 /* sector */) * BLOCKSIZE;
+        dirblock = linear_sector(type, shadowdirtrack, first_dir_sector(type)) * BLOCKSIZE;
         image[dirblock + SECTORLINKOFFSET] = 255;
 
         mark_sector(type, image, shadowdirtrack, 0 /* sector */, 0 /* not free */);
-        mark_sector(type, image, shadowdirtrack, (type == IMAGE_D81) ? 3 : 1 /* sector */, 0 /* not free */);
+        mark_sector(type, image, shadowdirtrack, first_dir_sector(type), 0 /* not free */);
     }
 
     update_directory(type, image, header, id, bam_message, shadowdirtrack);
@@ -1398,7 +1411,7 @@ count_hashes(image_type type, const unsigned char* image, unsigned int hash, boo
         exit(-1);
     }
 
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -1435,7 +1448,7 @@ check_hashes(image_type type, const unsigned char* image)
     }
     printf("\n");
 
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -1477,7 +1490,7 @@ static bool
 find_existing_file(image_type type, unsigned char* image, unsigned char* filename, int *index, int *track, int *sector, int *offset)
 {
     *track = dirtrack(type);
-    *sector = (type == IMAGE_D81) ? 3 : 1;
+    *sector = first_dir_sector(type);
     *offset = 0;
     *index = 0;
     bool exists = false;
@@ -1506,7 +1519,7 @@ static void
 new_dir_slot(image_type type, unsigned char* image, int dir_sector_interleave, int shadowdirtrack, int *index, int *dirsector,  int *entry_offset, imagefile files[])
 {
     int track = dirtrack(type);
-    *dirsector = (type == IMAGE_D81) ? 3 : 1;
+    *dirsector = first_dir_sector(type);
     *entry_offset = 0;
     int lindex = 0;
 
@@ -1688,7 +1701,7 @@ print_file_allocation(image_type type, const unsigned char* image, imagefile* fi
         memset(existing_files, 0, sizeof existing_files);
 
         int t = dirtrack(type);
-        int s = (type == IMAGE_D81) ? 3 : 1;
+        int s = first_dir_sector(type);
         int o = 0;
         char *blockmap = calloc(image_num_blocks(type), sizeof(char));
         if(blockmap == NULL) {
@@ -1815,7 +1828,7 @@ print_file_allocation(image_type type, const unsigned char* image, imagefile* fi
 
         bool firsttrack = true;
         int firstsector = sector;
-        bool fileblocks[SECTORSPERTRACK_D81];
+        bool fileblocks[MAXSECTORS];
         memset(fileblocks, 0, sizeof fileblocks);
         fileblocks[sector] = true;
 
@@ -1886,7 +1899,7 @@ print_file_allocation(image_type type, const unsigned char* image, imagefile* fi
 
 
 static void
-assign_blocktags(image_type type, const unsigned char *image, int(*blocktags)[SECTORSPERTRACK_D81])
+assign_blocktags(image_type type, const unsigned char *image, int(*blocktags)[MAXSECTORS])
 {
     char c = '@';
 
@@ -1895,7 +1908,7 @@ assign_blocktags(image_type type, const unsigned char *image, int(*blocktags)[SE
         fprintf(stderr, "ERROR: Memory allocation error\n");
         exit(-1);
     }
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -1922,7 +1935,7 @@ assign_blocktags(image_type type, const unsigned char *image, int(*blocktags)[SE
                 transwarp_size(type, start_track, end_track, filesize, &transwarp_blocks, &nonredundant_blocks, &redundant_blocks, &nonredundant_blocks_on_last_track);
 
                 for (int track = low_track; track <= high_track; ++track) {
-                    for (int sector = 0; sector < SECTORSPERTRACK_D81; ++sector) {
+                    for (int sector = 0; sector < MAXSECTORS; ++sector) {
                         blocktags[track][sector] = c + (((track == end_track) && (sector >= nonredundant_blocks_on_last_track)) ? 256 : 0);
                     }
                 }
@@ -1990,7 +2003,7 @@ fileontrack(image_type type, const unsigned char *image, int track, int filetrac
 
 /* Prints all filenames of files that use the given track */
 static void
-print_track_usage(image_type type, const unsigned char *image, int(*blocktags)[SECTORSPERTRACK_D81], int track)
+print_track_usage(image_type type, const unsigned char *image, int(*blocktags)[MAXSECTORS], int track)
 {
 
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -1998,7 +2011,7 @@ print_track_usage(image_type type, const unsigned char *image, int(*blocktags)[S
         fprintf(stderr, "ERROR: Memory allocation error\n");
         exit(-1);
     }
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -2054,7 +2067,7 @@ check_bam(image_type type, const unsigned char* image)
     int sectorsOccupied = 0;
     int sectorsOccupiedOnDirTrack = 0;
 
-    int blocktags[D81NUMTRACKS][SECTORSPERTRACK_D81];
+    int blocktags[MAXTRACKS][MAXSECTORS];
 
     if (verbose) {
         memset(blocktags, 0, sizeof blocktags);
@@ -2063,9 +2076,7 @@ check_bam(image_type type, const unsigned char* image)
         printf("Block allocation:\n");
     }
 
-    int max_track = (type == IMAGE_D81) ? D81NUMTRACKS
-                    : (((type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS)) ? D64NUMTRACKS_EXTENDED
-                       : D64NUMTRACKS);
+    int max_track = image_num_tracks(type) / fmt(type)->sides; /* D71: both sides per line */
     for (int t = 1; t <= max_track; t++) {
 
         if (verbose) {
@@ -2134,7 +2145,7 @@ check_bam(image_type type, const unsigned char* image)
             }
         }
 
-        for (int i = ((type == IMAGE_D81) ? 42 : 23) - num_sectors(type, t); i > 0; --i) {
+        for (int i = max_sectors(type) + 2 - num_sectors(type, t); i > 0; --i) {
             if (verbose) {
                 printf(" ");
             }
@@ -2197,7 +2208,7 @@ print_directory(image_type type, unsigned char* image, int blocks_free)
     }
     printf("\n");
 
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -3706,7 +3717,7 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                 /* find Transwarp bootfile */
 
                 int t = dirtrack(type);
-                int s = (type == IMAGE_D81) ? 3 : 1;
+                int s = first_dir_sector(type);
                 int o = 0;
 
                 do {
@@ -4158,7 +4169,7 @@ static void
 init_atab(image_type type, unsigned char* image, char* atab)
 {
     int dt = dirtrack(type);
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int offset = 0;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
     if(blockmap == NULL) {
@@ -4251,7 +4262,7 @@ static int
 undelete(image_type type, unsigned char* image, char* atab, int level)
 {
     int dt = dirtrack(type);
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int nsectors = num_sectors(type, dt);
     int offset = 0;
     int num_undeleted = 0;
@@ -4288,7 +4299,7 @@ undelete(image_type type, unsigned char* image, char* atab, int level)
 
     /* search for unlinked dir sectors */
     dt = dirtrack(type);
-    for(ds = (type == IMAGE_D81) ? 3 : 1; ds < nsectors; ds++) {
+    for(ds = first_dir_sector(type); ds < nsectors; ds++) {
         if(!searched[ds]) {
             int found = 1;
             for(offset = 0; offset < DIRENTRIESPERBLOCK*DIRENTRYSIZE; offset += DIRENTRYSIZE) {
@@ -4336,7 +4347,7 @@ add_wild_to_dir(image_type type, unsigned char* image, char* atab, imagefile fil
                 name[0] = 0xa0;
                 int dir_index, dir_sector, dir_offset;
                 atab[b] = ALLOCATED;
-                new_dir_slot(type, image, (type == IMAGE_D81 ? 1 : 3), 0, &dir_index, &dir_sector, &dir_offset, files); /* TODO: handle full directory more gracefully */
+                new_dir_slot(type, image, fmt(type)->dir_interleave, 0, &dir_index, &dir_sector, &dir_offset, files); /* TODO: handle full directory more gracefully */
                 int db = linear_sector(type, dirtrack(type), dir_sector);
                 atab[db] = ALLOCATED; /* make sure that potentially new dir block is marked as used */
                 int offset = db * BLOCKSIZE + dir_offset;
@@ -4360,7 +4371,7 @@ static int
 undelete_wild(image_type type, unsigned char* image, char* atab, int level, imagefile files[])
 {
     int num_undeleted = 0;
-    int max_bam_sector = (type == IMAGE_D81) ? 2 : 0;
+    int max_bam_sector = fmt(type)->last_bam_sector;
     unsigned int dt = dirtrack(type);
     /* search for well terminated sector chains */
     for(unsigned int t = 1; t <= image_num_tracks(type); t++) {
@@ -4429,7 +4440,7 @@ static int
 undelete_fix_wild(image_type type, unsigned char* image, char* atab, imagefile files[])
 {
     int num_undeleted = 0;
-    int max_bam_sector = (type == IMAGE_D81) ? 2 : 0;
+    int max_bam_sector = fmt(type)->last_bam_sector;
     unsigned int dt = dirtrack(type);
     /* search for broken sector chains */
     for(unsigned int t = 1; t <= image_num_tracks(type); t++) {
@@ -4526,7 +4537,7 @@ convert_to_commandline(image_type type, unsigned char* image)
     print_filename_with_escapes(image + bam + get_id_offset(type), 5);
     printf("\" ");
 
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -4562,11 +4573,8 @@ validate(image_type type, unsigned char* image)
     }
     /* check format specifier */
     int format = image[linear_sector(type, dirtrack(type), 0) * BLOCKSIZE + 2];
-    if ((type == IMAGE_D64 || type == IMAGE_D71) && format != 0x41) {
-        fprintf(stderr, "ERROR: validation failed, format specifier in directory (0x%02x) does not specify 1541/1570/1571 (0x41)\n", format);
-        exit(-1);
-    } else if(type == IMAGE_D81 && format != 0x44) {
-        fprintf(stderr, "ERROR: validation failed, format specifier in directory (0x%02x) does not specify 1581 (0x44)\n", format);
+    if (fmt(type)->dos_type && format != fmt(type)->dos_type) {
+        fprintf(stderr, "ERROR: validation failed, format specifier in directory (0x%02x) does not match %s (0x%02x)\n", format, fmt(type)->name, fmt(type)->dos_type);
         exit(-1);
     }
     /* check double sided flag */
@@ -4594,7 +4602,7 @@ validate(image_type type, unsigned char* image)
         atab[linear_sector(type, dirtrack(type), 2)] = ALLOCATED;
     }
     unsigned int dt = dirtrack(type);
-    int dirsector = (type == IMAGE_D81) ? 3 : 1;
+    int dirsector = first_dir_sector(type);
     unsigned int start_track = 1;
     while (start_track != 0) {
         atab[linear_sector(type, dt, dirsector)] = ALLOCATED;
@@ -4737,7 +4745,7 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
         exit(-1);
     }
 
-    int ds = (type == IMAGE_D81) ? 3 : 1;
+    int ds = first_dir_sector(type);
     int dt = dirtrack(type);
     int offset = 0;
     do {
@@ -4800,7 +4808,7 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
 int
 main(int argc, char* argv[])
 {
-    imagefile files[MAXNUMFILES_D81];
+    imagefile files[MAXNUMFILES];
     memset(files, 0, sizeof files);
     patch patches[MAXNUMPATCHES];
     memset(patches, 0, sizeof patches);
