@@ -18,8 +18,7 @@ jobs:
       - name: Build
         run: |
           make -j2 cit test_cit CC=x86_64-w64-mingw32-gcc LDFLAGS="-static -s" ENABLE_WERROR=1
-          mv cit cit.exe
-          mv test_cit test_cit.exe
+          # MinGW appends .exe itself: cit.exe, test_cit.exe
       - name: Test (Wine)
         run: WINEDEBUG=-all wine64 ./test_cit.exe ./cit.exe
       - uses: actions/upload-artifact@v4

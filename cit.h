@@ -1,0 +1,308 @@
+/*******************************************************************************
+* Copyright (c) 2008-2024 JackAsser, Krill, Claus, Björn Esser
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy
+* of this software and associated documentation files (the "Software"), to deal
+* in the Software without restriction, including without limitation the rights
+* to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+* copies of the Software, and to permit persons to whom the Software is
+* furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+* AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+* OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+* SOFTWARE.
+*******************************************************************************/
+
+/* cit.h: declarations shared by the modules of CIT */
+
+#ifndef CIT_H
+#define CIT_H
+
+#define VERSION "0.1" /* CIT, based on cc1541 4.2 */
+
+#define _CRT_SECURE_NO_WARNINGS /* avoid security warnings for MSVC */
+
+#include <ctype.h>
+#include <locale.h>
+#include <math.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <wchar.h>
+
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
+
+#ifdef _WIN32
+#include <windows.h>
+#define FILESEPARATOR '\\'
+#else
+#define FILESEPARATOR '/'
+#endif
+
+#define DIRENTRIESPERBLOCK     8
+#define MAXTRACKS              154  /* most tracks of any image (D82) */
+#define MAXSECTORS             192  /* most sectors per track (D90: 6 heads x 32) */
+#define DIRTRACK_D41_D71       18
+#define MAXNUMFILES            296  /* files per call (D81 directory: 37 sectors x 8) */
+#define DIRENTRYSIZE           32
+#define BLOCKSIZE              256
+#define BLOCKOVERHEAD          2
+#define TRACKLINKOFFSET        0
+#define SECTORLINKOFFSET       1
+#define FILETYPEOFFSET         2
+#define FILETYPEDEL            0
+#define FILETYPESEQ            1
+#define FILETYPEPRG            2
+#define FILETYPEUSR            3
+#define FILETYPEREL            4
+#define FILETYPETRANSWARPMASK  0x100
+#define FILETRACKOFFSET        3
+#define FILESECTOROFFSET       4
+#define FILENAMEOFFSET         5
+#define FILENAMEMAXSIZE        16
+#define FILENAMEEMPTYCHAR      (' ' | 0x80)
+#define BAMMESSAGEOFFSET       0xab
+#define BAMMESSAGEMAXSIZE      0x100-BAMMESSAGEOFFSET
+#define TRANSWARPSIGNATROFFSLO 21
+#define TRANSWARPSIGNATURELO   'T'
+#define TRANSWARPSIGNATROFFSHI 22
+#define TRANSWARPSIGNATUREHI   'W'
+#define DIRDATACHECKSUMOFFSET  23
+#define TRANSWARPTRACKOFFSET   24
+#define FILECHECKSUMOFFSET     25
+#define LOADADDRESSLOOFFSET    26
+#define LOADADDRESSHIOFFSET    27
+#define ENDADDRESSLOOFFSET     28
+#define ENDADDRESSHIOFFSET     29
+#define FILEBLOCKSLOOFFSET     30
+#define FILEBLOCKSHIOFFSET     31
+#define D64NUMBLOCKS           (664 + 19)
+#define D64SIZE                (D64NUMBLOCKS * BLOCKSIZE)
+#define D64NUMTRACKS           35
+#define BAM_OFFSET_SPEED_DOS   0xc0
+#define BAM_OFFSET_DOLPHIN_DOS 0xac
+#define DIRSLOTEXISTS          0
+#define DIRSLOTFOUND           1
+#define DIRSLOTNOTFOUND        2
+/* for sector chain analysis */
+#define UNALLOCATED            0 /* unused as of now */
+#define ALLOCATED              1 /* part of a valid sector chain */
+#define FILESTART              2 /* analysed to be the start of a sector chain */
+#define FILESTART_TRUNCATED    3 /* analysed to be the start of a sector chain, was truncated */
+#define POTENTIALLYALLOCATED   4 /* currently being analysed */
+/* error codes for sector chain validation */
+#define VALID                  0 /* valid chain */
+#define ILLEGAL_TRACK          1 /* ends with illegal track pointer */
+#define ILLEGAL_SECTOR         2 /* ends with illegal sector pointer */
+#define LOOP                   3 /* loop in current chain */
+#define COLLISION              4 /* collision with other file */
+#define CHAINED                5 /* ends at another file start */
+#define CHAINED_TRUNCATED      6 /* ends at start of a truncated file */
+#define FIRST_BROKEN           7 /* issue already in first sector */
+/* undelete levels */
+#define RESTORE_DIR_ONLY        0 /* Only restore all dir entries without touching any t/s links */
+#define RESTORE_VALID_FILES     1 /* Fix dir entries for files with valid t/s chains */
+#define RESTORE_VALID_CHAINS    2 /* Also add wild sector chains with valid t/s chains */
+#define RESTORE_INVALID_FILES   3 /* Also fix dir entries with invalid t/s chains */
+#define RESTORE_INVALID_CHAINS  4 /* Also add and fix wild invalid t/s chains */
+#define RESTORE_INVALID_SINGLES 5 /* Also include single block files */
+/* error codes for directory */
+#define DIR_OK                 0
+#define DIR_ILLEGAL_TS         1
+#define DIR_CYCLIC_TS          2
+
+#define TRANSWARP                "TRANSWARP"
+#define TRANSWARPBASEBLOCKSIZE   0xc0
+#define TRANSWARPBUFFERBLOCKSIZE 0x1f
+#define TRANSWARPBLOCKSIZE       (TRANSWARPBASEBLOCKSIZE + TRANSWARPBUFFERBLOCKSIZE)
+#define TRANSWARPKEYSIZE         29 /* 232 bits */
+#define TRANSWARPKEYHASHROUNDS   33
+
+/* maximum number of files for transwarp order permutation */
+#define MAXPERMUTEDFILES 11
+/* maximum number of free sectors on an extended D64 */
+#define MAXFREESECTORS 768
+/* maximum number of patches */
+#define MAXNUMPATCHES 32
+/* maximum number of patterns for file extraction */
+#define MAXNUMEXTRACTIONS 32
+
+typedef struct {
+    const unsigned char* alocalname;                  /* local file name or name of loop file in ASCII */
+    unsigned char        plocalname[FILENAMEMAXSIZE]; /* loop file in PETSCII */
+    unsigned char        pfilename[FILENAMEMAXSIZE];  /* disk file name in PETSCII */
+    int                  direntryindex;
+    int                  direntrysector;
+    int                  direntryoffset;
+    int                  sectorInterleave;
+    int                  first_sector_new_track;
+    int                  track;
+    int                  sector;
+    int                  nrSectors;
+    int                  nrSectorsShown;
+    int                  filetype;
+    int                  mode;
+    int                  force_new;
+    int                  size;
+    int                  last_track;
+    bool                 have_key;
+    unsigned char        key[TRANSWARPKEYSIZE];
+} imagefile;
+
+typedef struct {
+    const char* filename;
+    int track;
+    int sector;
+    int offset;
+} patch;
+
+enum mode {
+    MODE_BEGINNING_SECTOR_MASK   = 0x0000ff, /* 8 bits: sector + 1 (up to 192 sectors per track) */
+    MODE_MIN_TRACK_MASK          = 0x00ff00, /* 8 bits (up to 154 tracks) */
+    MODE_MIN_TRACK_SHIFT         = 8,
+    MODE_SAVETOEMPTYTRACKS       = 0x010000,
+    MODE_FITONSINGLETRACK        = 0x020000,
+    MODE_SAVECLUSTEROPTIMIZED    = 0x040000,
+    MODE_LOOPFILE                = 0x080000,
+    MODE_TRANSWARPBOOTFILE       = 0x100000,
+    MODE_NOFILE                  = 0x200000
+};
+
+typedef enum {
+    IMAGE_D64,
+    IMAGE_D64_EXTENDED_SPEED_DOS,
+    IMAGE_D64_EXTENDED_DOLPHIN_DOS,
+    IMAGE_D71,
+    IMAGE_D81
+} image_type;
+
+
+/*
+ * Format table: everything that describes the geometry and the layout of an
+ * image type lives here. Code that needs such a value asks the table instead
+ * of testing the image type.
+ *
+ * zone[]: sectors per track, valid up to and including last_track. Tracks
+ * count from 1. The zones of a double sided image cover both sides.
+ */
+#define MAXZONES 8
+
+typedef struct {
+    const char *name;           /* image type as shown to the user */
+    int num_tracks;             /* tracks of the whole image (both sides) */
+    int sides;                  /* 2: second side starts at num_tracks/2+1 */
+    struct {
+        int last_track;
+        int sectors;
+    } zone[MAXZONES];
+    int dir_track;              /* track with header, BAM and directory */
+    int first_dir_sector;       /* first directory sector on dir_track */
+    int last_bam_sector;        /* header and BAM: sectors 0..last_bam_sector */
+    int dir_interleave;         /* default interleave of directory sectors */
+    int header_offset;          /* disk name in the header sector */
+    int id_offset;              /* disk id (5 bytes incl. dos type) */
+    unsigned char dos_type;     /* format byte at offset 2, 0 = not checked */
+} format_t;
+
+/* cit.c: global settings */
+extern int quiet;
+extern int verbose;
+extern int num_files;
+extern int max_hash_length;
+extern int unicode;
+extern int modified;
+extern int dir_error;
+
+/* petscii.c: PETSCII and console output */
+unsigned char a2p(unsigned char a);
+char* petscii2ascii(const unsigned char* petscii, char* ascii, int len, bool slash);
+void ascii2petscii(const unsigned char* ascii, unsigned char* petscii, int len);
+void print_filename_with_escapes(const unsigned char* petscii, int len);
+int pstrlen(const unsigned char* string);
+void pputnum(unsigned char* string, unsigned int num);
+void pputnum2(unsigned char* string, unsigned int num);
+void pputhex(unsigned char* string, unsigned int num);
+void evalhexescape(const unsigned char* ascii, unsigned char* petscii, int len, unsigned char emptychar);
+void reverse_print_on(void);
+void reverse_print_off(void);
+void putp(unsigned char petscii, FILE *file);
+void print_petscii(unsigned char *petscii, int len);
+void print_dirfilename(unsigned char* pfilename);
+void print_filename(FILE *file, unsigned char* pfilename);
+
+/* image.c: format table, geometry, BAM, directory and validation */
+const format_t * fmt(image_type type);
+unsigned int image_num_tracks(image_type type);
+int num_sectors(image_type type, int track);
+int max_sectors(image_type type);
+unsigned int image_num_blocks(image_type type);
+unsigned int image_size(image_type type);
+int dirtrack(image_type type);
+int first_dir_sector(image_type type);
+int linear_sector(image_type type, int track, int sector);
+int is_sector_free(image_type type, const unsigned char* image, int track, int sector, int numdirblocks, int dir_sector_interleave);
+void mark_sector(image_type type, unsigned char* image, int track, int sector, int free);
+int get_header_offset(image_type type);
+int get_id_offset(image_type type);
+void update_directory(image_type type, unsigned char* image, unsigned char* header, unsigned char* id, unsigned char *bam_message, int shadowdirtrack);
+void initialize_directory(image_type type, unsigned char* image, unsigned char* header, unsigned char* id, unsigned char * bam_message, int shadowdirtrack, int usedirtrack);
+bool next_dir_entry(image_type type, const unsigned char* image, int *track, int *sector, int *offset, char *blockmap);
+bool match_filename(const unsigned char *pattern, const unsigned char *filename);
+bool find_existing_file(image_type type, unsigned char* image, unsigned char* filename, int *index, int *track, int *sector, int *offset);
+void new_dir_slot(image_type type, unsigned char* image, int dir_sector_interleave, int shadowdirtrack, int *index, int *dirsector,  int *entry_offset, imagefile files[]);
+bool find_dir_slot(image_type type, unsigned char* image, unsigned char* filename, int dir_sector_interleave, int shadowdirtrack, int *index, int *dirsector,  int *entry_offset, imagefile files[]);
+int count_blocks(image_type type, unsigned char *image, unsigned int track, int sector);
+void mark_sector_chain(image_type type, unsigned char *image, char* atab, unsigned int track, int sector, unsigned int last_track, int last_sector, int mark);
+int validate_sector_chain(image_type type, unsigned char* image, char* atab, unsigned int track, int sector, unsigned int *last_track, int *last_sector);
+void init_atab(image_type type, unsigned char* image, char* atab);
+void write_atab(image_type type, unsigned char* image, char* atab);
+void validate(image_type type, unsigned char* image);
+
+/* gcr.c: GCR coding of the 1541 */
+extern const unsigned char NIBBLE_TO_GCR[];
+void encode_4_bytes_gcr(char* in, char* out);
+void generate_gcr_decoding_table(const unsigned char nibble_to_gcr[], int8_t gcr_to_nibble[]);
+unsigned char even_bits(unsigned char value);
+unsigned char odd_bits(unsigned char value);
+bool decode_5_bytes_gcr(const int8_t decoding_map[], const unsigned char *in, unsigned char *out);
+int decode_gcr_block(const int8_t decoding_map[], const unsigned char *encoded, unsigned char decoded[]);
+
+/* transwarp.c: Transwarp files and Krill's loader filename hash */
+unsigned int filenamehash(const unsigned char *filename);
+unsigned char transwarp_dirdata_checksum(const unsigned char *image, int dir_entry_offset);
+bool is_transwarp_file(const unsigned char *image, int dir_entry_offset);
+bool is_transwarp_bootfile(const unsigned char *image, int dir_entry_offset);
+int transwarp_stat(image_type type, const unsigned char *image, int dir_entry_offset, int *start_track, int *end_track, int *low_track, int *high_track);
+int transwarp_size(image_type type, int start_track, int end_track, int filesize, int *transwarp_blocks, int *nonredundant_blocks, int *redundant_blocks, int *nonredundant_blocks_on_last_track);
+bool check_hashes(image_type type, const unsigned char* image);
+unsigned char crc8(unsigned char value);
+unsigned long long write_transwarp_file(image_type type, unsigned char *image, imagefile *file, unsigned char *filedata, int *filesize, unsigned int version, bool transwarp_bootfile_fits_on_dir_track);
+void optimize_transwarp_allocation(image_type type, unsigned char *image, imagefile *files, int num_files, int order[]);
+
+/* g64.c: G64 output */
+int generate_uniformat_g64(unsigned char* image, const char *imagepath);
+
+/* undelete.c: restoring deleted and formatted files */
+void restore(image_type type, unsigned char* image, int level, imagefile files[]);
+
+/* cit.c: command line, writing and listing files */
+int check_bam(image_type type, const unsigned char* image);
+
+#endif /* CIT_H */

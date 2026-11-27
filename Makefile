@@ -24,9 +24,12 @@ CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h
 
 all: $(ALL_TARGETS)
 
-cit.o: cit.c
+CIT_OBJS = cit.o image.o petscii.o gcr.o transwarp.o g64.o undelete.o
 
-cit: cit.o
+$(CIT_OBJS): cit.h
+
+cit: $(CIT_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(CIT_OBJS) $(LDLIBS)
 
 cit.1.txt: cit.1.txt.in
 	sed -e "s/@@VERSION@@/$(VERSION)/g" < cit.1.txt.in > cit.1.txt
@@ -45,8 +48,8 @@ check: cit test_cit
 
 test: check
 
-cit_asan: cit.c
-	$(CC) -g -fsanitize=address -fsanitize=undefined -o $@ $<
+cit_asan: $(CIT_OBJS:.o=.c) cit.h
+	$(CC) $(CFLAGS) -g -fsanitize=address -fsanitize=undefined -o $@ $(CIT_OBJS:.o=.c)
 
 asantest: cit_asan test_cit
 	./test_cit ./cit_asan
@@ -101,8 +104,8 @@ dist-check: dist
 	$(MAKE) -C $($@_TMP)/cit-$(VERSION)/ all check
 	rm -rf $($@_TMP)
 
-codestyle: cit.c test_cit.c
-	astyle --style=kr -n -s -z2 cit.c test_cit.c
+codestyle: $(CIT_OBJS:.o=.c) cit.h test_cit.c
+	astyle --style=kr -n -s -z2 $^
 
 wrap: cit.1.txt.in LICENSE.txt README.md
 	for f in $^; do \
