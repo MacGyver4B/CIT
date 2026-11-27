@@ -81,5 +81,31 @@ ID=ab check_format d80 t.d80 1700 $(( $(offset 39 0 $D80Z) + 0x18 )) 4142a03243 
 ID=ab check_format d82 t.d82 2200 $(( $(offset 39 0 $D82Z) + 0x18 )) 4142a03243 \
     $(( $(offset 38 9 $D82Z) + 6 + 3 * 5 + 1 ))
 
+# --alloc dos must place every block like the drive. References: images that
+# the real DOS wrote in VICE (4040, 1541, 1571, 1581, 8050, 8250) were byte
+# identical to these cit images (unused tail of the last block ignored).
+# Files f01..f13 of 1, 2, 3, 5, ... 233 and <big> blocks, each filled with
+# one byte value (65 + n); <minus> bytes less than full blocks.
+dos_ref() { # name image big minus expected-cksum
+    rm -rf dosref && mkdir dosref && cd dosref || exit 2
+    i=0; args=""
+    for b in 1 2 3 5 8 13 21 34 55 89 144 233 "$2"; do
+        i=$((i + 1)); n=$(printf "f%02d" $i)
+        c=$(printf '\\%o' $((64 + i)))
+        head -c $((254 * b - $3)) /dev/zero | tr '\000' "$(printf "$c")" > $n
+        args="$args -f $n -w $n"
+    done
+    # shellcheck disable=SC2086
+    "$CIT" --alloc dos -n test -i ab $args "$1" > /dev/null 2>&1
+    got=$(cksum < "$1" | cut -d' ' -f1)
+    if [ "$got" = "$4" ]; then ok; else bad "--alloc dos $1: cksum $got, expected $4 (drive layout)"; fi
+    cd .. && rm -rf dosref
+}
+dos_ref t.d64 40 1 3056002060
+dos_ref t.d71 600 1 648183459
+dos_ref t.d81 2500 1 448102000
+dos_ref t.d80 1300 0 1417827109
+dos_ref t.d82 3000 0 3895675243
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

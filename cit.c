@@ -61,6 +61,9 @@ usage(void)
     printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
+    printf("--alloc mode  Block allocation: cc1541 (default, from track 1 upwards)\n");
+    printf("              or dos (as the drive: from the directory track outwards,\n");
+    printf("              sector increment of the drive's DOS).\n");
     printf("-4            Use tracks 35-40 with SPEED DOS BAM formatting.\n");
     printf("-5            Use tracks 35-40 with DOLPHIN DOS BAM formatting.\n");
     printf("-d track      Maintain a shadow directory (copy of the actual directory without\n");
@@ -1130,6 +1133,23 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                 int blockfound = 0;
                 int findSector = 0;
 
+                if (alloc_mode == ALLOC_DOS) {
+                    int t = track;
+                    int sec = sector;
+                    bool ok = (bytesLeft == fileSize) ? dos_first_block(type, image, &t, &sec)
+                                                      : dos_next_block(type, image, &t, &sec, fmt(type)->file_interleave);
+                    if (!ok) {
+                        fprintf(stderr, "ERROR: Disk full, file %s (", file->alocalname);
+                        print_filename(stderr, file->pfilename);
+                        fprintf(stderr, ")\n");
+                        free(filedata);
+                        exit(-1);
+                    }
+                    track = t;
+                    findSector = sec;
+                    blockfound = 1;
+                }
+
                 while (!blockfound) {
                     /* find spare block on the current track */
                     for (int s = sector; s < sector + num_sectors(type, track); s++) {
@@ -1250,8 +1270,10 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                     exit(-1);
                 }
 
-                sector += abs(file->sectorInterleave);
-                sector %= num_sectors(type, track);
+                if (alloc_mode != ALLOC_DOS) { /* the DOS adds its increment itself */
+                    sector += abs(file->sectorInterleave);
+                    sector %= num_sectors(type, track);
+                }
 
                 file->nrSectors++;
             } /* while bytes left */
@@ -1955,6 +1977,20 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "--alloc") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --alloc\n");
+                return -1;
+            }
+            const char *m = argv[++j];
+            if (strcasecmp(m, "dos") == 0) {
+                alloc_mode = ALLOC_DOS;
+            } else if (strcasecmp(m, "cc1541") == 0) {
+                alloc_mode = ALLOC_CC1541;
+            } else {
+                fprintf(stderr, "ERROR: Unknown allocation strategy %s for --alloc\n", m);
+                return -1;
+            }
         } else if (strcmp(argv[j], "-D") == 0) {
             if (argc < j + 2) {
                 fprintf(stderr, "ERROR: Error parsing argument for -D\n");
@@ -2120,6 +2156,20 @@ main(int argc, char* argv[])
         if (files[k].start_sector_set && files[k].start_sector >= max_sectors(type)) {
             fprintf(stderr, "ERROR: Invalid beginning sector %d specified\n", files[k].start_sector);
             return -1;
+        }
+    }
+    if (alloc_mode == ALLOC_DOS) {
+        /* the cc1541 placement options have no meaning for the DOS strategy */
+        if (transwarp_set || usedirtrack || shadowdirtrack || !dirtracksplit) {
+            fprintf(stderr, "ERROR: Transwarp, -t, -d and -x do not work with --alloc dos\n");
+            return -1;
+        }
+        for (int k = 0; k < num_files; k++) {
+            if (files[k].start_sector_set || files[k].save_to_empty_track || files[k].fit_on_single_track
+                    || files[k].min_track > 0 || files[k].cluster_optimized) {
+                fprintf(stderr, "ERROR: -b, -e, -E, -r and -c do not work with --alloc dos\n");
+                return -1;
+            }
         }
     }
     if (d40 && transwarp_set) {

@@ -219,6 +219,7 @@ typedef struct {
     int id_offset;              /* disk id (5 bytes incl. dos type) */
     unsigned char dos_type;     /* format byte at offset 2, 0 = not checked */
     int second_bam_track;       /* 1571: BAM of the second side (track 53), 0 = none */
+    int file_interleave;        /* DOS sector increment for files (SECINC) */
     int num_bam_blocks;         /* BAM blocks besides the header (dir_track/0) */
     struct {
         int track;
@@ -263,6 +264,15 @@ unsigned int image_size(image_type type);
 int dirtrack(image_type type);
 int first_dir_sector(image_type type);
 int side_tracks(image_type type);
+
+/* block allocation strategy (--alloc) */
+typedef enum {
+    ALLOC_CC1541,               /* as cc1541: from track 1 upwards */
+    ALLOC_DOS                   /* as the drive's DOS: from the directory track outwards */
+} alloc_mode_t;
+extern alloc_mode_t alloc_mode;
+bool dos_first_block(image_type type, const unsigned char *image, int *track, int *sector);
+bool dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment);
 bool is_system_block(image_type type, int track, int sector);
 int get_bam_offset(image_type type, unsigned int track);
 int get_bam_count_offset(image_type type, unsigned int track);
