@@ -107,8 +107,28 @@ undelete_file(image_type type, unsigned char* image, int dt, int ds, int offset,
         memcpy(&image[dirblock + offset + FILENAMEOFFSET], &name, 16);
         image[dirblock + offset + FILETYPEOFFSET] = 0x82; /* original file type is lost, use closed PRG instead */
         mark_sector_chain(type, image, atab, track, sector, last_track, last_sector, ALLOCATED);
+        /* A deleted REL file keeps its index pointer and record length in the
+           directory entry: if that index still lists exactly the data chain
+           and is free, restore the file as REL together with its index. */
+        int index_blocks = 0;
+        const unsigned char *entry = image + dirblock + offset;
+        if (error == VALID && entry[0x17] != 0 && rel_check_index(type, image, entry) == NULL) {
+            ts_block index[REL_MAX_INDEX_BLOCKS];
+            int n = rel_index_blocks(type, image, entry, index, REL_MAX_INDEX_BLOCKS);
+            bool free_index = n > 0;
+            for (int i = 0; i < n; i++) {
+                free_index &= (atab[linear_sector(type, index[i].track, index[i].sector)] == UNALLOCATED);
+            }
+            if (free_index) {
+                for (int i = 0; i < n; i++) {
+                    atab[linear_sector(type, index[i].track, index[i].sector)] = ALLOCATED;
+                }
+                image[dirblock + offset + FILETYPEOFFSET] = 0x84;
+                index_blocks = n;
+            }
+        }
         if(level != RESTORE_DIR_ONLY) {
-            int size = count_blocks(type, image, track, sector);
+            int size = count_blocks(type, image, track, sector) + index_blocks;
             image[dirblock + offset + FILEBLOCKSHIOFFSET] = size / 256;
             image[dirblock + offset + FILEBLOCKSLOOFFSET] = size % 256;
         }

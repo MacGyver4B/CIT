@@ -61,7 +61,7 @@ usage(void)
     printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
-    printf("--from path   Copy all files of an image or a folder; the source is only read.\n");
+    printf("--convert src Copy all files of an image or a folder; the source is only read.\n");
     printf("              image -> new image: laid out anew (also another format),\n");
     printf("                       disk name and id of the source unless -n/-i\n");
     printf("              image -> existing image: files are added\n");
@@ -217,6 +217,19 @@ wipe_file(image_type type, unsigned char* image, imagefile* file)
 
     if (sector >= 0x80) {
         return; /* loop file */
+    }
+
+    if ((image[b + FILETYPEOFFSET] & 7) == FILETYPEREL) {
+        /* a REL file: its index (side sectors) goes with it */
+        ts_block index[REL_MAX_INDEX_BLOCKS];
+        int n = rel_index_blocks(type, image, image + b, index, REL_MAX_INDEX_BLOCKS);
+        for (int i = 0; i < n; i++) {
+            memset(image + linear_sector(type, index[i].track, index[i].sector) * BLOCKSIZE, 0, BLOCKSIZE);
+            mark_sector(type, image, index[i].track, index[i].sector, 1 /* free */);
+        }
+        image[b + 0x15] = 0;
+        image[b + 0x16] = 0;
+        image[b + 0x17] = 0;
     }
 
     while (track != 0) {
@@ -951,6 +964,13 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
             }
             if (size >= 0) {
                 num_blocks[i] = (int)((size + BLOCKSIZE - BLOCKOVERHEAD - 1) / (BLOCKSIZE - BLOCKOVERHEAD));
+                if ((files[i].filetype & 7) == FILETYPEREL) {
+                    /* REL: data and index are planned as one stream */
+                    if (num_blocks[i] == 0) {
+                        num_blocks[i] = 1;
+                    }
+                    num_blocks[i] += rel_index_count(type, num_blocks[i]);
+                }
             }
         }
         /* the "*" file: first directory entry of the image */
@@ -1034,6 +1054,23 @@ write_files(image_type type, unsigned char *image, imagefile *files, int num_fil
                     exit(-1);
                 }
                 fclose(f);
+            }
+
+            if ((file->filetype & 7) == FILETYPEREL && !(file->filetype & FILETYPETRANSWARPMASK)) {
+                /* REL: data and a new index (side sectors) in one go */
+                if (file->record_length < 1 || file->record_length > 254) {
+                    fprintf(stderr, "ERROR: REL file %s needs a record length (1-254)\n", file->alocalname);
+                    exit(-1);
+                }
+                int entryOffset = linear_sector(type, dirtrack(type), file->direntrysector) * BLOCKSIZE + file->direntryoffset;
+                int blocks = rel_write(type, image, image + entryOffset, filedata, fileSize, file->record_length,
+                                       (plan != NULL) ? plan[file - files] : NULL);
+                file->nrSectors = blocks;
+                int shown = (file->nrSectorsShown == -1) ? blocks : file->nrSectorsShown;
+                image[entryOffset + FILEBLOCKSLOOFFSET] = shown & 255;
+                image[entryOffset + FILEBLOCKSHIOFFSET] = shown >> 8;
+                free(filedata);
+                continue;
             }
 
             if ((!(file->filetype & FILETYPETRANSWARPMASK))
@@ -1660,7 +1697,10 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
                     petscii2ascii(filename, afilename, FILENAMEMAXSIZE, false);
                     int pext = strlen(afilename);
                     filetype &= 7;
-                    if(filetype <= 5) {
+                    if (filetype == FILETYPEREL) {
+                        /* the record length is part of the file, the side sectors are not */
+                        sprintf(afilename + pext, "[rs%d].rel", image[dirblock + 0x17]);
+                    } else if(filetype <= 5) {
                         afilename[pext] = '.';
                         strcpy(afilename + pext + 1, filetypename_lc[filetype]);
                     }
@@ -1745,7 +1785,7 @@ main(int argc, char* argv[])
     int transwarp_set = 0;
     int format_choice = -1;           /* -D: image type, -1 = from the file name */
     bool alloc_explicit = false;      /* --alloc given */
-    const char *from_path = NULL;     /* --from: source image or folder */
+    const char *convert_path = NULL;     /* --convert: source image or folder */
     bool name_set = false;            /* -n given */
     bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
     bool id_set = false;
@@ -2046,12 +2086,12 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
-        } else if (strcmp(argv[j], "--from") == 0) {
+        } else if (strcmp(argv[j], "--convert") == 0) {
             if (argc < j + 2) {
-                fprintf(stderr, "ERROR: Error parsing argument for --from\n");
+                fprintf(stderr, "ERROR: Error parsing argument for --convert\n");
                 return -1;
             }
-            from_path = argv[++j];
+            convert_path = argv[++j];
             modified = 1;
         } else if (strcmp(argv[j], "--alloc") == 0) {
             if (argc < j + 2) {
@@ -2203,7 +2243,7 @@ main(int argc, char* argv[])
     }
     dir_sector_interleave = fmt(type)->dir_interleave;
 
-    if (from_path != NULL) {
+    if (convert_path != NULL) {
         /* Target folder or image? An existing path tells itself; for a new one:
            -D or a known image extension means image, anything else a folder. */
         struct stat st;
@@ -2221,12 +2261,12 @@ main(int argc, char* argv[])
             target_folder = slash || (format_choice < 0 && !image_ext);
         }
         struct stat sst;
-        if (stat(from_path, &sst) != 0) {
-            fprintf(stderr, "ERROR: Source %s not found\n", from_path);
+        if (stat(convert_path, &sst) != 0) {
+            fprintf(stderr, "ERROR: Source %s not found\n", convert_path);
             return -1;
         }
-        if (target_exists && same_file(from_path, imagepath)) {
-            fprintf(stderr, "ERROR: Source and target are the same, --from always writes a copy\n");
+        if (target_exists && same_file(convert_path, imagepath)) {
+            fprintf(stderr, "ERROR: Source and target are the same, --convert always writes a copy\n");
             return -1;
         }
         if (S_ISDIR(sst.st_mode)) {
@@ -2234,13 +2274,13 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Copying a folder into a folder is not what cit is for\n");
                 return -1;
             }
-            if (add_files_from_folder(from_path, files, &num_files, defaultSectorInterleave, default_first_sector_new_track) < 0) {
+            if (add_files_from_folder(convert_path, files, &num_files, defaultSectorInterleave, default_first_sector_new_track) < 0) {
                 return -1;
             }
         } else {
             image_type stype;
             unsigned char *simage;
-            if (load_source_image(from_path, &stype, &simage) < 0) {
+            if (load_source_image(convert_path, &stype, &simage) < 0) {
                 return -1;
             }
             if (target_folder) {

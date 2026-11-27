@@ -807,6 +807,19 @@ init_atab(image_type type, unsigned char* image, char* atab)
                 printf(" seems corrupt (%s)\n", error_name[error]);
             }
             mark_sector_chain(type, image, atab, track, sector, last_track, last_sector, ALLOCATED);
+            if (filetype == FILETYPEREL) {
+                /* the side sectors belong to the file as well */
+                ts_block index[REL_MAX_INDEX_BLOCKS];
+                int n = rel_index_blocks(type, image, image + db * BLOCKSIZE + offset, index, REL_MAX_INDEX_BLOCKS);
+                for (int i = 0; i < n; i++) {
+                    atab[linear_sector(type, index[i].track, index[i].sector)] = ALLOCATED;
+                }
+                if (n < 0) {
+                    printf("WARNING: REL file ");
+                    print_filename(stdout, &image[db * BLOCKSIZE + offset + FILENAMEOFFSET]);
+                    printf(" has a broken side sector chain\n");
+                }
+            }
         }
     } while(next_dir_entry(type, image, &dt, &ds, &offset, blockmap));
     free(blockmap);
@@ -915,6 +928,25 @@ validate(image_type type, unsigned char* image)
                     }
                     atab[linear_sector(type, start_track, start_sector)] = FILESTART;
                     mark_sector_chain(type, image, atab, start_track, start_sector, error_track, error_sector, ALLOCATED);
+                    if (filetype == FILETYPEREL) {
+                        /* the index (side sectors) must list exactly the data blocks */
+                        const unsigned char *entry = image + dirblock + entryOffset;
+                        const char *problem = rel_check_index(type, image, entry);
+                        if (problem != NULL) {
+                            fprintf(stderr, "ERROR: validation failed, REL file at track %u, sector %d: %s\n", start_track, start_sector, problem);
+                            exit(-1);
+                        }
+                        ts_block index[REL_MAX_INDEX_BLOCKS];
+                        int n = rel_index_blocks(type, image, entry, index, REL_MAX_INDEX_BLOCKS);
+                        for (int i = 0; i < n; i++) {
+                            int b = linear_sector(type, index[i].track, index[i].sector);
+                            if (atab[b] != UNALLOCATED) {
+                                fprintf(stderr, "ERROR: validation failed, side sector %d/%d collides with another block\n", index[i].track, index[i].sector);
+                                exit(-1);
+                            }
+                            atab[b] = ALLOCATED;
+                        }
+                    }
                 }
             }
         }

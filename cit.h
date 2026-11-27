@@ -159,12 +159,13 @@ typedef struct {
     int                  nrSectors;
     int                  nrSectorsShown;
     int                  filetype;
-    /* content already in memory (--from), instead of reading alocalname */
+    /* content already in memory (--convert), instead of reading alocalname */
     const unsigned char *data;
     int                  data_size;
     bool                 has_data;
     void                *data_alloc;           /* to free: start of the data buffer */
     void                *name_alloc;           /* to free: alocalname, if allocated */
+    int                  record_length;        /* REL files: record length (1-254) */
     /* placement of the file (strategy cc1541) and kind of entry */
     int                  start_sector;         /* -b: first sector of the file */
     bool                 start_sector_set;
@@ -284,7 +285,16 @@ typedef struct {
 } ts_block;
 int dos_free_blocks(image_type type, const unsigned char *image, int track);
 int dos_getsec(image_type type, const unsigned char *image, int track, int start);
-/* copy.c (--from) */
+/* rel.c: REL files (data + side sector index) */
+#define REL_MAX_INDEX_BLOCKS (1 + 126 * 6)   /* super side sector + side sectors */
+bool rel_has_super_side_sector(image_type type);
+int rel_index_blocks(image_type type, const unsigned char *image, const unsigned char *entry, ts_block *blocks, int max);
+const char *rel_check_index(image_type type, const unsigned char *image, const unsigned char *entry);
+int rel_index_count(image_type type, int data_blocks);
+int rel_write(image_type type, unsigned char *image, unsigned char *entry, const unsigned char *data, int size,
+              int record_length, const ts_block *plan);
+
+/* copy.c (--convert) */
 bool same_file(const char *a, const char *b);
 int load_source_image(const char *path, image_type *type, unsigned char **image);
 void source_header(image_type type, const unsigned char *image, char *header, char *id); /* 3 * 16 + 1, 3 * 2 + 1 */

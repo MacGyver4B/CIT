@@ -88,7 +88,7 @@ With `--alloc dos` or `auto`, the cc1541 placement options `-b -e -E -r
 -c -x` are ignored with a warning; Transwarp, `-t` and `-d` change the
 structure of the disk and switch to `cc1541`, also with a warning.
 
-### Copying (`--from`) ###
+### Copying and converting (`--convert`) ###
 
 The source is only read, a copy is always written; source and target the
 same is refused.
@@ -98,26 +98,51 @@ same is refused.
 * image -> existing image: the files are added (`dos`)
 * image -> folder: PC64 x00 files (P00/S00/U00/R00), numbered in
   directory order (`001_name.p00`) so that the order survives
-* folder -> image: x00 files with the name and type of their header,
-  other files as PRG named after the file, in file name order
+* folder -> image: x00 files with the name and type of their header;
+  plain files as `-X` writes them (`name.prg`, `.seq`, `.usr`,
+  `name[rs64].rel` with the record length); anything else as PRG named
+  after the file; in file name order
 
 A new target is a folder unless it has an image extension or `-D` is
 given; an existing path tells itself.
 
 Not copied, with a warning: GEOS files, unclosed files, broken block
-chains, used blocks that belong to no file, error tables. REL files are
-written to R00 files; copying them into images follows (see below).
+chains, used blocks that belong to no file, error tables.
+
+### REL files ###
+
+A REL file is one unit of data and index. The data blocks are linked like
+any other file; the index is a chain of side sectors, each listing up to
+120 data blocks in order, with a super side sector in front on the 8250
+(D82) and the 1581 (D81), even for small files. The 8050 has none, so its
+REL files hold at most 720 data blocks. The directory entry points to the
+index ($15/$16) and holds the record length ($17).
+
+The index only holds block addresses, so it is never copied or unpacked
+(R00 files and `name[rs64].rel` carry the data and the record length):
+cit builds it anew whenever it writes a REL file. Validate (`-V`) checks
+that the index lists exactly the data blocks; overwriting frees the index
+with the data; undelete recognises a deleted REL file by its index and
+restores it as REL.
+
+Layout:
+
+* `dos` (also used for `cc1541`, which never wrote REL files) - as the
+  drive expands a REL file in one go: data 1 like any first block, side
+  sector 0 and the super side sector as the next blocks after data 1,
+  every data block after the previous one, side sector j once data
+  120 * j + 2 is taken, as the next block after data 120 * j + 1; the byte
+  behind the last record is $FF. Byte identical to files written by the
+  1541, 1571, 1581, 8050 and 8250 in VICE.
+* `auto` - one stream: super side sector, side sector 0, its 120 data
+  blocks, side sector 1, ... so every side sector lies next to the data it
+  lists.
 
 ### Planned ###
 
-* REL files as one unit of data and index: side sectors (and the super
-  side sector of the 8250/1581) are only an index of the data blocks and
-  depend on their position, so they are rebuilt when writing, never
-  copied or unpacked. `auto` writes a REL file as one stream: super side
-  sector, side sector, its 120 data blocks, next side sector ...
-* unpacking variants: x00 (default, lossless), plain files (as `-X`; REL
-  as `name[rs64].rel`), converted (BASIC as text in `petcat` notation,
+* `-XA`: extract with conversion (BASIC as text in `petcat` notation,
   load address as `[la0801]`, only where the way back is lossless)
+* writing REL files from the command line (`-T REL` with a record length)
 * an option to choose the first file (`*` file)
 * D67 (2040), D60/D90 (D9060/D9090), DNP, CMD containers, error tables,
   G64/G71/NIB in raw.c
@@ -127,7 +152,8 @@ written to R00 files; copying them into images follows (see below).
 * `make check` - the cc1541 tests plus `tests/formats.sh`: round trip of
   every format and strategy (write, `-V`, `-X`, compare), disk id rule,
   a wrong BAM must be detected, reference sums for `dos` (confirmed by
-  the real drives in VICE) and `auto`, `--from` round trips
+  the real drives in VICE) and `auto`, `--convert` round trips, REL files
+  in every format and strategy
 * `make compare REF=<git ref>` - byte by byte comparison of 29 cases
   with another version, e.g. `cc1541-4.2`
 

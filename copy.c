@@ -1,5 +1,5 @@
 /*
- * copy.c - --from: copy all files of an image or a folder
+ * copy.c - --convert: copy all files of an image or a folder
  *
  *   image  -> new image       copy, laid out anew (auto), also into another format
  *   image  -> existing image  files are added (dos)
@@ -166,7 +166,7 @@ typedef struct {
 /* all files of the source image in directory order; used blocks that belong
    to no copied file are counted for a warning */
 static int
-read_source_files(image_type type, const unsigned char *image, source_file **out, bool keep_rel)
+read_source_files(image_type type, const unsigned char *image, source_file **out)
 {
     char *used = calloc(image_num_blocks(type), 1);
     char *blockmap = calloc(image_num_blocks(type), 1);
@@ -192,10 +192,6 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
             fprintf(stderr, "WARNING: Unclosed file \"%s\" is not copied\n", aname);
             continue;
         }
-        if ((ft & 7) == FILETYPEREL && !keep_rel) {
-            fprintf(stderr, "WARNING: REL file \"%s\" is not copied (side sectors are not written yet)\n", aname);
-            continue;
-        }
         if (e[0x18] != 0) {
             fprintf(stderr, "WARNING: GEOS file \"%s\" is not copied\n", aname);
             continue;
@@ -207,7 +203,7 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
         source_file *f = &files[n];
         f->filetype = ft;
         memcpy(f->name, e + FILENAMEOFFSET, FILENAMEMAXSIZE);
-        f->record_length = e[0x15];
+        f->record_length = e[0x17];
         f->size = read_chain(type, image, e[FILETRACKOFFSET], e[FILESECTOROFFSET], &f->data, used);
         if (f->size < 0) {
             fprintf(stderr, "WARNING: File \"%s\" has a broken block chain and is not copied\n", aname);
@@ -215,15 +211,11 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
             continue;
         }
         if ((ft & 7) == FILETYPEREL) {
-            /* side sectors are rebuilt by the drive, they hold no data */
-            int st = e[0x13];
-            int ss = e[0x14];
-            while (st != 0 && st <= (int)image_num_tracks(type) && ss < num_sectors(type, st)
-                    && !used[linear_sector(type, st, ss)]) {
-                used[linear_sector(type, st, ss)] = 1;
-                const unsigned char *b = image + linear_sector(type, st, ss) * BLOCKSIZE;
-                st = b[0];
-                ss = b[1];
+            /* the index belongs to the file; it is rebuilt when writing */
+            ts_block index[REL_MAX_INDEX_BLOCKS];
+            int ni = rel_index_blocks(type, image, e, index, REL_MAX_INDEX_BLOCKS);
+            for (int k = 0; k < ni; k++) {
+                used[linear_sector(type, index[k].track, index[k].sector)] = 1;
             }
         }
         n++;
@@ -258,7 +250,7 @@ add_files_from_image(image_type type, const unsigned char *image, imagefile *fil
                      int sector_interleave, int first_sector_new_track)
 {
     source_file *src;
-    int n = read_source_files(type, image, &src, false);
+    int n = read_source_files(type, image, &src);
     for (int i = 0; i < n; i++) {
         if (*num_files >= MAXNUMFILES) {
             fprintf(stderr, "ERROR: Too many files\n");
@@ -283,6 +275,7 @@ add_files_from_image(image_type type, const unsigned char *image, imagefile *fil
         f->has_data = true;
         f->data_alloc = src[i].data;
         f->name_alloc = aname;
+        f->record_length = src[i].record_length;
         (*num_files)++;
     }
     free(src);
@@ -320,7 +313,7 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
         }
     }
     source_file *src;
-    int n = read_source_files(type, image, &src, true);
+    int n = read_source_files(type, image, &src);
     for (int i = 0; i < n; i++) {
         char name[3 * FILENAMEMAXSIZE + 16];
         x00_name(name, sizeof name, i + 1, src[i].name, src[i].filetype);
@@ -432,10 +425,13 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
             int t = strchr("sS", ext[1]) ? FILETYPESEQ : strchr("uU", ext[1]) ? FILETYPEUSR
                     : strchr("rR", ext[1]) ? FILETYPEREL : FILETYPEPRG;
             if (t == FILETYPEREL) {
-                fprintf(stderr, "WARNING: REL file %s is not copied (side sectors are not written yet)\n", names[i]);
-                free(data);
-                free(path);
-                continue;
+                fi->record_length = data[25];
+                if (fi->record_length == 0) {
+                    fprintf(stderr, "WARNING: R00 file %s has no record length and is not copied\n", names[i]);
+                    free(data);
+                    free(path);
+                    continue;
+                }
             }
             for (int k = 0; k < FILENAMEMAXSIZE; k++) {
                 unsigned char c = data[8 + k];
@@ -453,8 +449,42 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
             fi->data = data + X00_HEADER_SIZE;
             fi->data_size = (int)st.st_size - X00_HEADER_SIZE;
         } else {
-            ascii2petscii((unsigned char *)names[i], fi->pfilename, FILENAMEMAXSIZE);
-            fi->filetype = 0x82;
+            /* plain files as -X writes them: name.prg/.seq/.usr, name[rsNN].rel;
+               anything else is a PRG with the whole file name */
+            char cbmname[3 * FILENAMEMAXSIZE + 16];
+            snprintf(cbmname, sizeof cbmname, "%s", names[i]);
+            int t = FILETYPEPRG;
+            size_t l = strlen(cbmname);
+            if (l > 4 && cbmname[l - 4] == '.') {
+                const char *e = cbmname + l - 3;
+                if (strcasecmp(e, "prg") == 0) {
+                    t = FILETYPEPRG;
+                    cbmname[l - 4] = 0;
+                } else if (strcasecmp(e, "seq") == 0) {
+                    t = FILETYPESEQ;
+                    cbmname[l - 4] = 0;
+                } else if (strcasecmp(e, "usr") == 0) {
+                    t = FILETYPEUSR;
+                    cbmname[l - 4] = 0;
+                } else if (strcasecmp(e, "rel") == 0) {
+                    cbmname[l - 4] = 0;
+                    char *rs = strrchr(cbmname, '[');
+                    int rl = 0;
+                    char close = 0;
+                    if (rs == NULL || sscanf(rs, "[rs%d%c", &rl, &close) != 2 || close != ']'
+                            || rs[strlen(rs) - 1] != ']' || rl < 1 || rl > 254) {
+                        fprintf(stderr, "WARNING: %s has no record length [rsNN] and is not copied\n", names[i]);
+                        free(data);
+                        free(path);
+                        continue;
+                    }
+                    *rs = 0;
+                    t = FILETYPEREL;
+                    fi->record_length = rl;
+                }
+            }
+            ascii2petscii((unsigned char *)cbmname, fi->pfilename, FILENAMEMAXSIZE);
+            fi->filetype = 0x80 | t;
             fi->data = data;
             fi->data_size = (int)st.st_size;
         }

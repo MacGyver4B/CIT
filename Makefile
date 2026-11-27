@@ -24,7 +24,7 @@ CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h
 
 all: $(ALL_TARGETS)
 
-CIT_OBJS = cit.o image.o alloc.o copy.o petscii.o gcr.o transwarp.o raw.o undelete.o
+CIT_OBJS = cit.o image.o alloc.o copy.o rel.o petscii.o gcr.o transwarp.o raw.o undelete.o
 
 $(CIT_OBJS): cit.h
 

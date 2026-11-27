@@ -119,27 +119,62 @@ dos_ref t.d81 2500 1 3887907604 auto
 dos_ref t.d80 1300 0 1680565862 auto
 dos_ref t.d82 3000 0 1074286723 auto
 
-# --from: image -> folder (x00) -> image of another format, contents, names,
+# --convert: image -> folder (x00) -> image of another format, contents, names,
 # types and directory order must survive; source and target the same is refused
 from_test() {
     rm -rf ft && mkdir ft && cd ft || exit 2
     head -c 500 /dev/urandom > a; head -c 9000 /dev/urandom > b; head -c 30000 /dev/urandom > c
     "$CIT" -n quelle -i qx -f boot -w a -f daten -T SEQ -w b -f prog -w c src.d82 > /dev/null 2>&1
-    "$CIT" --from src.d82 out > /dev/null 2>&1
-    if [ -f out/001_boot.p00 ] && [ -f out/002_daten.s00 ] && [ -f out/003_prog.p00 ]; then ok; else bad "--from image -> folder: x00 files missing"; fi
-    "$CIT" --from out back.d64 > /dev/null 2>&1
-    if "$CIT" -V back.d64 > /dev/null 2>&1; then ok; else bad "--from folder -> image: -V failed"; fi
+    "$CIT" --convert src.d82 out > /dev/null 2>&1
+    if [ -f out/001_boot.p00 ] && [ -f out/002_daten.s00 ] && [ -f out/003_prog.p00 ]; then ok; else bad "--convert image -> folder: x00 files missing"; fi
+    "$CIT" --convert out back.d64 > /dev/null 2>&1
+    if "$CIT" -V back.d64 > /dev/null 2>&1; then ok; else bad "--convert folder -> image: -V failed"; fi
     mkdir x && cd x && "$CIT" -X '*' ../back.d64 > /dev/null 2>&1
-    if cmp -s boot.prg ../a && cmp -s daten.seq ../b && cmp -s prog.prg ../c; then ok; else bad "--from round trip: contents differ"; fi
+    if cmp -s boot.prg ../a && cmp -s daten.seq ../b && cmp -s prog.prg ../c; then ok; else bad "--convert round trip: contents differ"; fi
     cd ..
     order=$("$CIT" back.d64 | grep -o '"[a-z]*"' | tr -d '"\n')
-    if [ "$order" = "bootdatenprog" ]; then ok; else bad "--from round trip: directory order $order"; fi
-    "$CIT" --from src.d82 conv.d80 > /dev/null 2>&1
-    if "$CIT" conv.d80 | grep -q '"quelle *" qx 2c'; then ok; else bad "--from image -> image: name/id not taken over"; fi
-    if "$CIT" --from src.d82 src.d82 > /dev/null 2>&1; then bad "--from with source = target must fail"; else ok; fi
+    if [ "$order" = "bootdatenprog" ]; then ok; else bad "--convert round trip: directory order $order"; fi
+    "$CIT" --convert src.d82 conv.d80 > /dev/null 2>&1
+    if "$CIT" conv.d80 | grep -q '"quelle *" qx 2c'; then ok; else bad "--convert image -> image: name/id not taken over"; fi
+    if "$CIT" --convert src.d82 src.d82 > /dev/null 2>&1; then bad "--convert with source = target must fail"; else ok; fi
     cd .. && rm -rf ft
 }
 from_test
+
+# REL files: data and a new index (side sectors, super side sector on D81/D82)
+# for every format and strategy; -V checks that the index lists exactly the
+# data blocks. The dos layout was compared with the real drives in VICE
+# (1541, 1571, 1581, 8050, 8250): byte identical.
+r00() { # file name record-length bytes byte-value
+    { printf 'C64File\000'; printf '%-16s' "$2" | tr ' ' '\000'; printf '\000'
+      printf "\\$(printf %o "$3")"
+      head -c "$4" /dev/zero | tr '\000' "$(printf "\\$(printf %o "$5")")"; } > "$1"
+}
+rel_test() {
+    rm -rf rt && mkdir -p rt/in && cd rt || exit 2
+    r00 in/001_kunden.r00 KUNDEN 64 3200 65   # x00 names are PETSCII: "KUNDEN" lists as kunden
+    for ext in d64 d71 d81 d80 d82; do
+        for a in auto dos; do
+            rm -f "t.$ext" && rm -rf x && mkdir x
+            "$CIT" --alloc $a --convert in "t.$ext" > /dev/null 2>&1
+            if "$CIT" -V "t.$ext" > /dev/null 2>&1; then ok; else bad "REL $ext $a: -V failed"; fi
+            (cd x && "$CIT" -X '*' "../t.$ext" > /dev/null 2>&1)
+            if [ -f "x/kunden[rs64].rel" ] && [ "$(wc -c < "x/kunden[rs64].rel")" -eq 3200 ]; then ok; else bad "REL $ext $a: -X result wrong"; fi
+        done
+    done
+    # large REL with a super side sector (more than 720 data blocks)
+    r00 in/002_gross.r00 GROSS 200 200000 66
+    for ext in d81 d82; do
+        rm -f "t.$ext"
+        "$CIT" --convert in "t.$ext" > /dev/null 2>&1
+        if "$CIT" -V "t.$ext" > /dev/null 2>&1 && "$CIT" "t.$ext" | grep -q '^796 *"gross" *rel'; then ok; else bad "large REL $ext: wrong"; fi
+    done
+    # too large for the 8050 (no super side sector, 720 data blocks at most)
+    rm -f t.d80
+    if "$CIT" --convert in t.d80 > /dev/null 2>&1; then bad "large REL on D80 must fail"; else ok; fi
+    cd .. && rm -rf rt
+}
+rel_test
 
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]
