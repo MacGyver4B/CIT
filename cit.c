@@ -72,6 +72,9 @@ usage(void)
     printf("              A new target is a folder unless it has an image extension\n");
     printf("              or -D is given. Not copied (with a warning): REL files into\n");
     printf("              images, GEOS files, used blocks of no file, error tables.\n");
+    printf("--config file Settings file instead of cit.ini (next to the program, or\n");
+    printf("              %%APPDATA%%\\cit, ~/.config/cit): petcat, alloc.new, alloc.existing,\n");
+    printf("              disk.name; the command line wins.\n");
     printf("--dirpos name n  Swap the directory entry of name with entry n (1: the \"*\"\n");
     printf("              file); for new files with --alloc auto, n = 1 also places\n");
     printf("              the file next to the directory track.\n");
@@ -1772,7 +1775,16 @@ main(int argc, char* argv[])
     image_type type = IMAGE_D64;
     char* imagepath = NULL;
     char* filename_g64 = NULL;
-    unsigned char* header  = (unsigned char*)"cit";
+    /* cit.ini first, so that the command line wins */
+    const char *config_path = NULL;
+    for (int k = 1; k + 1 < argc; k++) {
+        if (strcmp(argv[k], "--config") == 0) {
+            config_path = argv[k + 1];
+        }
+    }
+    load_config(argv[0], config_path);
+
+    unsigned char* header  = (unsigned char*)(config.disk_name != NULL ? config.disk_name : "cit");
     unsigned char* id      = (unsigned char*)"00#a02a";
     unsigned char* bam_message = NULL;
     int dirtracksplit = 1;
@@ -2104,6 +2116,8 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "--config") == 0) {
+            j++; /* read before the other options */
         } else if (strcmp(argv[j], "--dirpos") == 0) {
             if (argc < j + 3 || sscanf(argv[j + 2], "%d", &dirpos) != 1 || dirpos < 1) {
                 fprintf(stderr, "ERROR: Error parsing arguments for --dirpos (name position)\n");
@@ -2387,9 +2401,9 @@ main(int argc, char* argv[])
         if ((type == IMAGE_D64 && !d40) || extended || cc1541_options) {
             alloc_mode = ALLOC_CC1541;
         } else if (stat(imagepath, &st) == 0) {
-            alloc_mode = ALLOC_DOS;
+            alloc_mode = (config.alloc_existing >= 0) ? (alloc_mode_t)config.alloc_existing : ALLOC_DOS;
         } else {
-            alloc_mode = ALLOC_AUTO;
+            alloc_mode = (config.alloc_new >= 0) ? (alloc_mode_t)config.alloc_new : ALLOC_AUTO;
         }
     }
     if (alloc_mode != ALLOC_CC1541) {

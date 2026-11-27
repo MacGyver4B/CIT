@@ -295,6 +295,17 @@ int rel_index_count(image_type type, int data_blocks);
 int rel_write(image_type type, unsigned char *image, unsigned char *entry, const unsigned char *data, int size,
               int record_length, const ts_block *plan);
 
+/* config.c: cit.ini */
+typedef struct {
+    const char *petcat;         /* path of petcat, NULL = search PATH */
+    int alloc_new;              /* strategy for a new image, -1 = built-in */
+    int alloc_existing;         /* strategy when adding files, -1 = built-in */
+    const char *disk_name;      /* disk name without -n, NULL = "cit" */
+    const char *path;           /* the file that was read, NULL = none */
+} cit_config;
+extern cit_config config;
+void load_config(const char *program, const char *explicit_path);
+
 /* copy.c (--convert) */
 bool same_file(const char *a, const char *b);
 int load_source_image(const char *path, image_type *type, unsigned char **image);

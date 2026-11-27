@@ -24,7 +24,7 @@ CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h
 
 all: $(ALL_TARGETS)
 
-CIT_OBJS = cit.o image.o alloc.o copy.o rel.o petscii.o gcr.o transwarp.o raw.o undelete.o
+CIT_OBJS = cit.o image.o alloc.o copy.o rel.o config.o petscii.o gcr.o transwarp.o raw.o undelete.o
 
 $(CIT_OBJS): cit.h
 
@@ -43,16 +43,19 @@ test_cit.o: test_cit.c
 
 test_cit: test_cit.o
 
+# the tests must not see a cit.ini of the user
+NOCONFIG = XDG_CONFIG_HOME=/nonexistent HOME=/nonexistent APPDATA=/nonexistent
+
 check: cit test_cit
-	./test_cit ./cit
-	sh tests/formats.sh ./cit
+	$(NOCONFIG) ./test_cit ./cit
+	$(NOCONFIG) sh tests/formats.sh ./cit
 
 test: check
 
 # byte for byte comparison with an older state: make compare REF=<git ref>
 REF ?= cc1541-4.2
 compare: cit
-	./tests/compare.sh $(REF) ./cit
+	$(NOCONFIG) ./tests/compare.sh $(REF) ./cit
 
 cit_asan: $(CIT_OBJS:.o=.c) cit.h
 	$(CC) $(CFLAGS) -g -fsanitize=address -fsanitize=undefined -o $@ $(CIT_OBJS:.o=.c)

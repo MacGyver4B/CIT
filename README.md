@@ -167,6 +167,26 @@ Layout:
 * D67 (2040), D60/D90 (D9060/D9090), DNP, CMD containers, error tables,
   G64/G71/NIB in raw.c
 
+### Settings (`cit.ini`) ###
+
+A few settings that would otherwise have to be given every time. The first
+file found is used: `--config file`, `cit.ini` next to the program
+(portable use), `%APPDATA%\cit\cit.ini` (Windows) or
+`~/.config/cit/cit.ini` (Linux, macOS). The command line always wins.
+
+```
+; tools
+petcat = C:\VICE\bin\petcat.exe   ; for -XA, else searched in PATH
+
+; defaults
+alloc.new      = auto            ; strategy for a new image
+alloc.existing = dos             ; strategy when adding files
+disk.name      = cit             ; disk name without -n
+```
+
+Unknown keys are reported with their line. CIT does not remember paths by
+itself: the same command gives the same result everywhere.
+
 ### Tests ###
 
 * `make check` - the cc1541 tests plus `tests/formats.sh`: round trip of
