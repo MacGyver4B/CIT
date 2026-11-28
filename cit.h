@@ -324,10 +324,13 @@ int type_from_size(long size, bool *error_table);
 typedef struct {
     unsigned long crc32;
     unsigned int crc16_xmodem;
+    unsigned int crc16_ccitt;   /* CRC-16/CCITT-FALSE, start $FFFF */
     unsigned int crc16_arc;
     unsigned char xor8;         /* CBM tape and disk block checksum */
     unsigned char cbm;          /* CBM ROM checksum: add with carry */
-    unsigned char sum8;         /* plain sum modulo 256 */
+    unsigned long sum32;        /* plain sum, 32, 16 and 8 bit */
+    unsigned int sum16;
+    unsigned char sum8;
     unsigned char md5[16];
     unsigned char sha1[20];
 } file_sums;

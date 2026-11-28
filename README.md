@@ -201,13 +201,16 @@ do, cit stops after them.
   only images: PRGs, ROM dumps, images as a whole (an image also lists its
   files). Every file gets all checksums:
   * CRC32 (zip, MAME and ROM lists), MD5, SHA-1
-  * CRC-16/XMODEM (polynomial $1021) and CRC-16/ARC ($8005, ARC/LHA)
+  * CRC-16/XMODEM ($1021, start 0), CRC-16/CCITT-FALSE ($1021, start
+    $FFFF, often just "CRC16 CCITT") and CRC-16/ARC ($8005, ARC/LHA)
   * xor - the 1 byte checksum of CBM tape blocks and disk data blocks
   * cbm - the CBM ROM checksum: every byte added with the carry of the
     addition before, the last carry added at the end. A CBM ROM chip gives
     the high byte of its start address ($E0 for the C64 kernal, $C0 and $E0
-    for the two 1541 ROMs, $D0 $E0 $F0 for the 4040)
-  * sum - plain sum modulo 256
+    for the two 1541 ROMs, $D0 $E0 $F0 for the 4040). A sum that fits is
+    marked "(ROM at $D000)"; a dump of several chips also shows the sum of
+    every 2K, 4K and 8K part
+  * sum32, sum16, sum - plain sum in 32, 16 and 8 bit
 * `--layout name` - the blocks of the matching files (wildcards as `-X`) in
   chain order; REL files with super side sector, side sectors and whether
   the index matches

@@ -236,10 +236,14 @@ tools_test() {
     # standard check values of "123456789" and the CBM ROM sum with carry
     printf '123456789' > check.bin
     S=$("$CIT" --sums check.bin)
-    for v in "crc32 cbf43926" "crc16/xmodem 31c3" "crc16/arc bb3d" "xor \$31" "cbm \$de" "sum \$dd" \
+    for v in "crc32 cbf43926" "crc16/xmodem 31c3" "crc16/arc bb3d" "crc16/ccitt 29b1" "sum32 000001dd" "sum16 01dd" "xor \$31" "cbm \$de" "sum \$dd" \
              "md5   25f9e794323b453885f5181f1b624d0b" "sha1 f7c3bc1d808e04732adf679965ccc34ca7ae3441"; do
         if echo "$S" | grep -q "$v"; then ok; else bad "--sums $v"; fi
     done
+    # a 4K part summing up to $d0 fits a ROM at $D000
+    head -c 4095 /dev/zero > rom.bin; printf '\320' >> rom.bin; cat rom.bin rom.bin > rom2.bin
+    if "$CIT" --sums rom.bin | grep -q 'cbm \$d0 (ROM at \$D000)'; then ok; else bad "--sums ROM hint"; fi
+    if "$CIT" --sums rom2.bin | grep -q 'cbm per 4K: \$d0 (ROM at \$D000) \$d0'; then ok; else bad "--sums per 4K"; fi
     printf '\001\010\000\000' > t.prg
     if "$CIT" --sums t.prg | grep -q 'load \$0801'; then ok; else bad "--sums load address"; fi
     if "$CIT" --layout a k.d64 | grep -q '(12)'; then ok; else bad "--layout"; fi

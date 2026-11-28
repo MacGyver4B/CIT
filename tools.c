@@ -25,11 +25,11 @@ crc32_of(const unsigned char *data, int size)
     return crc ^ 0xffffffffUL;
 }
 
-/* CRC-16/XMODEM (polynomial $1021, start 0), as XMODEM and many 8 bit tools */
+/* CRC-16 with polynomial $1021: start 0 is XMODEM, start $FFFF is
+   CCITT-FALSE (often just called CRC16 CCITT) */
 static unsigned int
-crc16_xmodem(const unsigned char *data, long size)
+crc16_1021(const unsigned char *data, long size, unsigned int crc)
 {
-    unsigned int crc = 0;
     for (long i = 0; i < size; i++) {
         crc ^= (unsigned int)data[i] << 8;
         for (int k = 0; k < 8; k++) {
@@ -214,9 +214,11 @@ void
 sums_of(const unsigned char *data, long size, file_sums *s)
 {
     s->crc32 = crc32_of(data, (int)size);
-    s->crc16_xmodem = crc16_xmodem(data, size);
+    s->crc16_xmodem = crc16_1021(data, size, 0);
+    s->crc16_ccitt = crc16_1021(data, size, 0xffff);
     s->crc16_arc = crc16_arc(data, size);
-    unsigned int x = 0, a = 0, c = 0, sum = 0;
+    unsigned int x = 0, a = 0, c = 0;
+    unsigned long sum = 0;
     for (long i = 0; i < size; i++) {
         x ^= data[i];
         a += data[i] + c;
@@ -226,6 +228,8 @@ sums_of(const unsigned char *data, long size, file_sums *s)
     }
     s->xor8 = (unsigned char)x;
     s->cbm = (unsigned char)((a + c) & 0xff);
+    s->sum32 = sum & 0xffffffffUL;
+    s->sum16 = (unsigned int)(sum & 0xffff);
     s->sum8 = (unsigned char)(sum & 0xff);
     md5_of(data, size, s->md5);
     sha1_of(data, size, s->sha1);
@@ -239,12 +243,52 @@ print_hex(const unsigned char *b, int n)
     }
 }
 
-/* the checksums, indented */
-static void
-print_sums(const char *indent, const file_sums *s)
+/* CBM ROM sum of a part */
+static unsigned int
+cbm_sum(const unsigned char *data, long size)
 {
-    printf("%scrc32 %08lx  crc16/xmodem %04x  crc16/arc %04x  xor $%02x  cbm $%02x  sum $%02x\n",
-           indent, s->crc32, s->crc16_xmodem, s->crc16_arc, s->xor8, s->cbm, s->sum8);
+    unsigned int a = 0, c = 0;
+    for (long i = 0; i < size; i++) {
+        a += data[i] + c;
+        c = a >> 8;
+        a &= 0xff;
+    }
+    return (a + c) & 0xff;
+}
+
+/* a CBM ROM chip of this size sums up to the high byte of its start
+   address: prints " (ROM at $D000)" when the sum fits such an address */
+static void
+print_rom_hint(unsigned int sum, long size)
+{
+    long start = (long)sum << 8;
+    if ((size == 2048 || size == 4096 || size == 8192) && start % size == 0 && start + size <= 0x10000) {
+        printf(" (ROM at $%04lX)", start);
+    }
+}
+
+/* the checksums, indented; for a dump of several ROM chips also the CBM
+   sum of every 2K, 4K and 8K part */
+static void
+print_sums(const char *indent, const file_sums *s, const unsigned char *data, long size)
+{
+    printf("%scrc32 %08lx  crc16/xmodem %04x  crc16/ccitt %04x  crc16/arc %04x\n",
+           indent, s->crc32, s->crc16_xmodem, s->crc16_ccitt, s->crc16_arc);
+    printf("%ssum32 %08lx  sum16 %04x  sum $%02x  xor $%02x  cbm $%02x",
+           indent, s->sum32, s->sum16, s->sum8, s->xor8, s->cbm);
+    print_rom_hint(s->cbm, size);
+    printf("\n");
+    for (long part = 2048; part <= 8192; part *= 2) {
+        if (size > part && size % part == 0 && size <= 0x10000) {
+            printf("%scbm per %ldK:", indent, part / 1024);
+            for (long i = 0; i < size; i += part) {
+                unsigned int c = cbm_sum(data + i, part);
+                printf(" $%02x", c);
+                print_rom_hint(c, part);
+            }
+            printf("\n");
+        }
+    }
     printf("%smd5   ", indent);
     print_hex(s->md5, 16);
     printf("  sha1 ");
@@ -303,7 +347,7 @@ tool_sums(image_type type, const unsigned char *image)
             printf("\n");
             file_sums s;
             sums_of(d->data, d->size, &s);
-            print_sums("     ", &s);
+            print_sums("     ", &s, d->data, d->size);
         }
     }
     for (int i = 0; i < n; i++) {
@@ -362,7 +406,7 @@ tool_sums_files(int count, char **paths)
         printf("\n");
         file_sums s;
         sums_of(data, size, &s);
-        print_sums("  ", &s);
+        print_sums("  ", &s, data, size);
         if (t >= 0) {
             printf("\n");
             tool_sums((image_type)t, data);
@@ -1125,9 +1169,11 @@ tool_json(image_type type, const unsigned char *image)
         } else if (f[i].kind != ENTRY_DUMMY) {
             file_sums fs;
             sums_of(d->data, d->size, &fs);
-            printf(", \"bytes\": %d, \"crc32\": \"%08lx\", \"crc16_xmodem\": \"%04x\", \"crc16_arc\": \"%04x\""
-                   ", \"xor\": \"%02x\", \"cbm\": \"%02x\", \"sum\": \"%02x\", \"md5\": \"",
-                   d->size, fs.crc32, fs.crc16_xmodem, fs.crc16_arc, fs.xor8, fs.cbm, fs.sum8);
+            printf(", \"bytes\": %d, \"crc32\": \"%08lx\", \"crc16_xmodem\": \"%04x\", \"crc16_ccitt\": \"%04x\", \"crc16_arc\": \"%04x\""
+                   ", \"sum32\": \"%08lx\", \"sum16\": \"%04x\", \"sum\": \"%02x\""
+                   ", \"xor\": \"%02x\", \"cbm\": \"%02x\", \"md5\": \"",
+                   d->size, fs.crc32, fs.crc16_xmodem, fs.crc16_ccitt, fs.crc16_arc, fs.sum32, fs.sum16, fs.sum8,
+                   fs.xor8, fs.cbm);
             print_hex(fs.md5, 16);
             printf("\", \"sha1\": \"");
             print_hex(fs.sha1, 20);
