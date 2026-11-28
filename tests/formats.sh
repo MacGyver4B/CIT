@@ -288,6 +288,13 @@ sd_test() {
     if command -v fsck.fat > /dev/null; then
         fsck.fat -n n64M.img > /dev/null 2>&1 && ok || bad "fsck.fat after copying and deleting"
     fi
+    # a link back to the folder itself must not make --sd-put run forever
+    if ln -s .. src/loop 2> /dev/null; then
+        "$CIT" --sd-put n64M.img --to /x2 src > /dev/null 2>&1
+        "$CIT" --sd-mkdir n64M.img /l > /dev/null 2>&1
+        "$CIT" --sd-put n64M.img --to /l src 2> err > /dev/null
+        grep -q "is a link, skipped" err && ok || bad "--sd-put must skip links"
+    fi
     cd .. && rm -rf sdt
 }
 sd_test
@@ -332,6 +339,9 @@ xa_test() {
     "$CIT" -n e -w excel.csv e.d64 > /dev/null 2>&1 && ok || bad "-w excel.csv"
     "$CIT" --sums e.d64 | grep -q "record length 9" && ok || bad "CSV record length from the longest line"
     if "$CIT" -n e -w "k[rs3].csv" -w out/../excel.csv f.d64 > /dev/null 2>&1; then bad "a record longer than [rsNN] must be refused"; else ok; fi
+    # text that ends inside an escape must give an error, not read on
+    printf 'abc{0x4' > cut.txt
+    if "$CIT" -n c -w cut.txt c.d64 > /dev/null 2>&1; then bad "an escape cut off at the end must be refused"; else ok; fi
     printf 'M\303\274ller\n' > u.csv
     if "$CIT" -n u -w u.csv u.d64 > /dev/null 2>&1; then bad "a character without PETSCII must be refused"; else ok; fi
     if command -v petcat > /dev/null; then

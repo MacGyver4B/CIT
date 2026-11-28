@@ -372,24 +372,13 @@ tool_sums_files(int count, char **paths)
 {
     int retval = 0;
     for (int i = 0; i < count; i++) {
-        FILE *fp = fopen(paths[i], "rb");
-        if (fp == NULL) {
-            fprintf(stderr, "ERROR: Could not open %s\n", paths[i]);
-            retval = -1;
-            continue;
-        }
-        fseek(fp, 0, SEEK_END);
-        long size = ftell(fp);
-        fseek(fp, 0, SEEK_SET);
-        unsigned char *data = malloc(size > 0 ? size : 1);
-        if (data == NULL || (size > 0 && fread(data, 1, size, fp) != (size_t)size)) {
+        unsigned char *data;
+        long size;
+        if (read_whole_file(paths[i], &data, &size) != 0) {
             fprintf(stderr, "ERROR: Could not read %s\n", paths[i]);
-            fclose(fp);
-            free(data);
             retval = -1;
             continue;
         }
-        fclose(fp);
         if (i > 0) {
             printf("\n");
         }

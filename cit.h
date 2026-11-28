@@ -356,8 +356,15 @@ int text_to_seq(const char *text, size_t len, const char *what, unsigned char **
 char *rel_to_csv(const unsigned char *data, int size, int record_length, size_t *len);
 int csv_to_rel(const char *text, size_t len, const char *what, int *record_length, unsigned char **data, int *size);
 
+int convert_written_files(imagefile *files, int num_files);
+void extract_files(image_type type, unsigned char *image, char *patterns[], const bool *converted, int num_patterns);
 int convert_local_file(const char *fname, const char *path, unsigned char *data, int size, char *cbmname,
                        size_t cbmsize, int *filetype, int *record_length, unsigned char **out, int *out_size);
+
+/* util.c */
+int read_whole_file(const char *path, unsigned char **data, long *size);
+int run_program(const char *prog, const char *const args[], bool quiet);
+int temp_file_name(char *name, size_t size);
 
 /* basic.c: BASIC programs as listings through petcat */
 int basic_to_listing(const unsigned char *data, int size, const char *cbmname, char **text, size_t *len,

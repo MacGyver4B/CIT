@@ -234,34 +234,47 @@ put_byte(buf_t *b, unsigned char c, bool utf8, const char *rep00)
     }
 }
 
-/* parses one character of text at s into a byte; returns the length used,
-   0 on error (message printed) */
+static int
+hex_digit(char c)
+{
+    return (c >= '0' && c <= '9') ? c - '0' : (c >= 'a' && c <= 'f') ? c - 'a' + 10
+           : (c >= 'A' && c <= 'F') ? c - 'A' + 10 : -1;
+}
+
+/* parses one character of text at s (avail bytes left, nothing behind
+   them is read) into a byte; returns the length used, 0 on error
+   (message printed) */
 static int
 parse_char(const char *s, size_t avail, const char *rep00, int line, const char *what, int *byte)
 {
-    if (rep00 != NULL && !zero_separates(rep00) && strncmp(s, rep00, strlen(rep00)) == 0
-            && strlen(rep00) <= avail) {
-        *byte = 0;
-        return (int)strlen(rep00);
+    if (rep00 != NULL && !zero_separates(rep00)) {
+        size_t rl = strlen(rep00);
+        if (rl <= avail && memcmp(s, rep00, rl) == 0) {
+            *byte = 0;
+            return (int)rl;
+        }
     }
     if (s[0] == '{') {
-        unsigned int v;
-        char close;
-        if (avail >= 6 && (s[1] == '0') && (s[2] == 'x' || s[2] == 'X') && sscanf(s + 3, "%2x%c", &v, &close) == 2
-                && close == '}' && isxdigit((unsigned char)s[3]) && isxdigit((unsigned char)s[4])) {
-            *byte = (int)v;
+        if (avail >= 6 && s[1] == '0' && (s[2] == 'x' || s[2] == 'X') && hex_digit(s[3]) >= 0
+                && hex_digit(s[4]) >= 0 && s[5] == '}') {
+            *byte = hex_digit(s[3]) * 16 + hex_digit(s[4]);
             return 6;
         }
-        fprintf(stderr, "ERROR: %s line %d: unknown escape %.8s\n", what, line, s);
+        size_t show = 0;
+        while (show < avail && show < 8 && s[show] != '\r' && s[show] != '\n') {
+            show++;
+        }
+        fprintf(stderr, "ERROR: %s line %d: unknown escape %.*s\n", what, line, (int)show, s);
         return 0;
     }
     int l;
     int b = byte_of(s, avail, &l);
     if (b < 0) {
         unsigned char c = (unsigned char)s[0];
-        int ul = (c >= 0xf0) ? 4 : (c >= 0xe0) ? 3 : (c >= 0xc0) ? 2 : 1;
+        size_t ul = (c >= 0xf0) ? 4 : (c >= 0xe0) ? 3 : (c >= 0xc0) ? 2 : 1;
+        ul = ul > avail ? avail : ul;
         fprintf(stderr, "ERROR: %s line %d: '%.*s' has no PETSCII character, write it as {0xNN}\n",
-                what, line, ul, s);
+                what, line, (int)ul, s);
         return 0;
     }
     *byte = b;
@@ -419,12 +432,14 @@ csv_to_rel(const char *text, size_t len, const char *what, int *record_length, u
             }
             if (count == cap) {
                 cap = cap ? cap * 2 : 256;
-                recs = realloc(recs, (size_t)cap * 256);
-                lens = realloc(lens, (size_t)cap * sizeof(int));
-                if (recs == NULL || lens == NULL) {
+                unsigned char *nr = realloc(recs, (size_t)cap * 256);
+                int *nl = realloc(lens, (size_t)cap * sizeof(int));
+                if (nr == NULL || nl == NULL) {
                     fprintf(stderr, "ERROR: Memory allocation error\n");
                     exit(-1);
                 }
+                recs = nr;
+                lens = nl;
             }
             if (n > 254) {
                 fprintf(stderr, "ERROR: %s line %d: record of %d bytes, at most 254 fit\n", what, line, n);

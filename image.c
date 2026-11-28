@@ -1046,7 +1046,7 @@ void
 validate(image_type type, unsigned char* image)
 {
     /* create block allocation table */
-    char *atab = (char *)calloc(image_num_blocks(type), sizeof(int));
+    char *atab = (char *)calloc(image_num_blocks(type), sizeof(char));
     if (atab == NULL) {
         fprintf(stderr, "ERROR: error allocating memory");
         exit(-1);

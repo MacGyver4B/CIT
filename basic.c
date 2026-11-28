@@ -12,20 +12,7 @@
  * SPDX-License-Identifier: MIT (same terms as cc1541, see LICENSE)
  */
 
-#ifndef _WIN32
-#define _POSIX_C_SOURCE 200809L   /* posix_spawnp, mkstemp */
-#endif
-
 #include "cit.h"
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <spawn.h>
-#include <sys/wait.h>
-#include <fcntl.h>
-#include <unistd.h>
-extern char **environ;
-#endif
 
 /* BASIC versions to try for a load address, the first one is the default */
 static const char *const *
@@ -51,91 +38,11 @@ versions_for(unsigned int la)
     }
 }
 
-/* runs petcat with the given arguments, output to nowhere; 0 = ok,
-   -1 = could not start, 1 = petcat failed */
+/* runs petcat, output to nowhere; 0 = ok, -1 = could not start, 1 = failed */
 static int
 run_petcat(const char *const args[])
 {
-    const char *prog = config.petcat != NULL ? config.petcat : "petcat";
-#ifdef _WIN32
-    char cmd[4096];
-    int n = snprintf(cmd, sizeof cmd, "\"%s\"", prog);
-    for (int i = 0; args[i] != NULL && n < (int)sizeof cmd; i++) {
-        n += snprintf(cmd + n, sizeof cmd - n, " \"%s\"", args[i]);
-    }
-    SECURITY_ATTRIBUTES sa = { sizeof sa, NULL, TRUE };
-    HANDLE nul = CreateFileA("NUL", GENERIC_WRITE, FILE_SHARE_WRITE, &sa, OPEN_EXISTING, 0, NULL);
-    STARTUPINFOA si;
-    PROCESS_INFORMATION pi;
-    memset(&si, 0, sizeof si);
-    si.cb = sizeof si;
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput = nul;
-    si.hStdError = nul;
-    BOOL ok = CreateProcessA(NULL, cmd, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
-    if (nul != INVALID_HANDLE_VALUE) {
-        CloseHandle(nul);
-    }
-    if (!ok) {
-        return -1;
-    }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return code == 0 ? 0 : 1;
-#else
-    const char *argv[32];
-    int n = 0;
-    argv[n++] = prog;
-    for (int i = 0; args[i] != NULL && n < 31; i++) {
-        argv[n++] = args[i];
-    }
-    argv[n] = NULL;
-    posix_spawn_file_actions_t fa;
-    posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_addopen(&fa, 1, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addopen(&fa, 2, "/dev/null", O_WRONLY, 0);
-    pid_t pid;
-    int r = posix_spawnp(&pid, prog, &fa, NULL, (char *const *)argv, environ);
-    posix_spawn_file_actions_destroy(&fa);
-    if (r != 0) {
-        return -1;
-    }
-    int status;
-    if (waitpid(pid, &status, 0) < 0) {
-        return 1;
-    }
-    if (WIFEXITED(status) && WEXITSTATUS(status) == 127) {
-        return -1;                              /* not found by the shell path */
-    }
-    return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : 1;
-#endif
-}
-
-/* a new empty temporary file; 0 = ok */
-static int
-temp_name(char *name, size_t size)
-{
-#ifdef _WIN32
-    char dir[MAX_PATH];
-    if (GetTempPathA(sizeof dir, dir) == 0 || GetTempFileNameA(dir, "cit", 0, name) == 0) {
-        return -1;
-    }
-    (void)size;
-    return 0;
-#else
-    const char *dir = getenv("TMPDIR");
-    snprintf(name, size, "%s/citXXXXXX", (dir != NULL && dir[0]) ? dir : "/tmp");
-    int fd = mkstemp(name);
-    if (fd < 0) {
-        return -1;
-    }
-    close(fd);
-    return 0;
-#endif
+    return run_program(config.petcat != NULL ? config.petcat : "petcat", args, true);
 }
 
 static int
@@ -152,23 +59,10 @@ write_file(const char *name, const void *data, size_t size)
 static int
 read_file(const char *name, unsigned char **data, size_t *size)
 {
-    FILE *f = fopen(name, "rb");
-    if (f == NULL) {
-        return -1;
-    }
-    fseek(f, 0, SEEK_END);
-    long l = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    *data = malloc(l > 0 ? (size_t)l + 1 : 1);
-    if (*data == NULL || (l > 0 && fread(*data, 1, (size_t)l, f) != (size_t)l)) {
-        fclose(f);
-        free(*data);
-        return -1;
-    }
-    fclose(f);
-    (*data)[l > 0 ? l : 0] = 0;
-    *size = (size_t)(l > 0 ? l : 0);
-    return 0;
+    long l;
+    int r = read_whole_file(name, data, &l);
+    *size = (size_t)l;
+    return r;
 }
 
 static bool petcat_missing_reported;
@@ -248,7 +142,7 @@ basic_to_listing(const unsigned char *data, int size, const char *cbmname, char 
         return 1;
     }
     char prg[1024], bas[1024], back[1024];
-    if (temp_name(prg, sizeof prg) != 0 || temp_name(bas, sizeof bas) != 0 || temp_name(back, sizeof back) != 0) {
+    if (temp_file_name(prg, sizeof prg) != 0 || temp_file_name(bas, sizeof bas) != 0 || temp_file_name(back, sizeof back) != 0) {
         fprintf(stderr, "WARNING: %s: no temporary file, kept as PRG\n", cbmname);
         return 1;
     }
@@ -335,7 +229,7 @@ listing_to_basic(const char *text, size_t len, unsigned int load_address, const 
         version = (v != NULL) ? v[0] : "2";
     }
     char bas[1024], prg[1024];
-    if (temp_name(bas, sizeof bas) != 0 || temp_name(prg, sizeof prg) != 0) {
+    if (temp_file_name(bas, sizeof bas) != 0 || temp_file_name(prg, sizeof prg) != 0) {
         fprintf(stderr, "ERROR: %s: no temporary file\n", what);
         return -1;
     }

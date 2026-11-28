@@ -22,7 +22,7 @@
 
 #define _FILE_OFFSET_BITS 64
 #ifndef _WIN32
-#define _DEFAULT_SOURCE        /* fseeko */
+#define _DEFAULT_SOURCE        /* fseeko, lstat */
 #endif
 
 #include "cit.h"
@@ -546,10 +546,20 @@ static int
 put_path(const char *local, const char *folder, int *count)
 {
     struct stat st;
+#ifdef _WIN32
     if (stat(local, &st) != 0) {
+#else
+    if (lstat(local, &st) != 0) {
+#endif
         fprintf(stderr, "ERROR: %s not found\n", local);
         return -1;
     }
+#ifndef _WIN32
+    if (S_ISLNK(st.st_mode)) {
+        fprintf(stderr, "WARNING: %s is a link, skipped\n", local);
+        return 0;
+    }
+#endif
     char name[1024];
     char target[2048];
     to_fat_name(base_name(local), name, sizeof name);
@@ -589,6 +599,22 @@ put_path(const char *local, const char *folder, int *count)
     return ret;
 }
 
+/* a name from the image that is safe as a local file name: FAT forbids
+   these characters, but a damaged or made-up image may have them */
+static bool
+safe_name(const char *n)
+{
+    if (n[0] == 0 || strcmp(n, ".") == 0 || strcmp(n, "..") == 0) {
+        return false;
+    }
+    for (const char *c = n; *c; c++) {
+        if (*c == '/' || *c == '\\' || *c == ':' || (unsigned char)*c < 0x20) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* copy a file or folder of the image into a local folder */
 static int
 get_path(const char *src, const char *folder, int *count)
@@ -605,6 +631,10 @@ get_path(const char *src, const char *folder, int *count)
             return -1;
         }
         is_dir = (fi.fattrib & AM_DIR) != 0;
+    }
+    if (fi.fname[0] && !safe_name(fi.fname)) {
+        fprintf(stderr, "WARNING: %s: the name in the image is no valid file name, skipped\n", src);
+        return 0;
     }
     char local_name[1024];
     to_local_name(fi.fname, local_name, sizeof local_name);
@@ -671,24 +701,13 @@ get_path(const char *src, const char *folder, int *count)
 /* --sd-mount / --sd-unmount: OSFMount.com does it (Windows only) */
 #ifdef _WIN32
 static int
-run_osfmount(const char *args)
+run_osfmount(const char *const args[])
 {
-    char cmd[4096];
-    snprintf(cmd, sizeof cmd, "\"%s\" %s", osfmount_path(), args);
-    STARTUPINFOA si;
-    PROCESS_INFORMATION pi;
-    memset(&si, 0, sizeof si);
-    si.cb = sizeof si;
-    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+    int r = run_program(osfmount_path(), args, false);
+    if (r < 0) {
         fprintf(stderr, "ERROR: Could not start %s (set osfmount in cit.ini)\n", osfmount_path());
-        return -1;
     }
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    return code == 0 ? 0 : -1;
+    return r;
 }
 
 /* "J:", "j", "J:\" -> 'J', 0 if it is no drive letter */
@@ -748,10 +767,10 @@ sd_mount(const char *image, const char *letter_text)
             printf("%c: is in use, taking %c:\n", wanted, letter);
         }
     }
-    char args[MAX_PATH + 128];
-    snprintf(args, sizeof args, "-a -t file -f \"%s\" -m %c: -o rw,%s", full, letter,
-             partitioned ? "logical -v 1" : "rem,logical");
-    if (run_osfmount(args) != 0 || !(GetLogicalDrives() & (1UL << (letter - 'A')))) {
+    char drive[3] = { letter, ':', 0 };
+    const char *plain[] = { "-a", "-t", "file", "-f", full, "-m", drive, "-o", "rw,rem,logical", NULL };
+    const char *part[] = { "-a", "-t", "file", "-f", full, "-m", drive, "-o", "rw,logical", "-v", "1", NULL };
+    if (run_osfmount(partitioned ? part : plain) != 0 || !(GetLogicalDrives() & (1UL << (letter - 'A')))) {
         fprintf(stderr, "ERROR: OSFMount could not mount %s (it needs administrator rights)\n", image);
         return -1;
     }
@@ -767,8 +786,8 @@ sd_unmount(const char *letter_text)
         fprintf(stderr, "ERROR: %s is no drive letter\n", letter_text);
         return -1;
     }
-    char args[32];
-    snprintf(args, sizeof args, "-d -m %c:", letter);
+    char drive[3] = { letter, ':', 0 };
+    const char *args[] = { "-d", "-m", drive, NULL };
     if (run_osfmount(args) != 0) {
         fprintf(stderr, "ERROR: OSFMount could not dismount %c: (still in use?)\n", letter);
         return -1;
