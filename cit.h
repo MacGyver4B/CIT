@@ -30,6 +30,7 @@
 #define _CRT_SECURE_NO_WARNINGS /* avoid security warnings for MSVC */
 
 #include <ctype.h>
+#include <stdarg.h>
 #include <locale.h>
 #include <math.h>
 #include <stdbool.h>
@@ -316,7 +317,38 @@ typedef struct {
 extern cit_config config;
 void load_config(const char *program, const char *explicit_path);
 
-/* copy.c (--convert) */
+/* tools.c: looking into images */
+unsigned long crc32_of(const unsigned char *data, int size);
+void tool_sums(image_type type, const unsigned char *image);
+void tool_layout(image_type type, const unsigned char *image, const char *pattern);
+bool tool_block(image_type type, const unsigned char *image, const char *arg);
+bool tool_poke(image_type type, unsigned char *image, const char *arg);
+int tool_diff(image_type type, const unsigned char *image, const char *other_path);
+int tool_check(image_type type, const unsigned char *image);
+void tool_json(image_type type, const unsigned char *image);
+
+/* copy.c (--convert): the directory entries of an image with their data */
+typedef enum {
+    ENTRY_FILE,                 /* an entry with its own blocks */
+    ENTRY_DUMMY,                /* no blocks (directory art, separators) */
+    ENTRY_LINK                  /* points to the blocks of an earlier entry */
+} entry_kind;
+
+typedef struct {
+    entry_kind kind;
+    unsigned char filetype;     /* as in the entry: DEL, locked, unclosed ... */
+    unsigned char name[FILENAMEMAXSIZE];
+    unsigned char record_length;
+    int shown_blocks;           /* block count as shown in the directory */
+    int link;                   /* ENTRY_LINK: index of the entry it points to */
+    int start_track;
+    int start_sector;
+    bool broken;                /* ENTRY_FILE whose block chain is broken (no data) */
+    unsigned char *data;
+    int size;
+} source_file;
+int read_source_files(image_type type, const unsigned char *image, source_file **out, bool warn);
+
 bool same_file(const char *a, const char *b);
 int load_source_image(const char *path, image_type *type, unsigned char **image);
 void source_header(image_type type, const unsigned char *image, char *header, char *id); /* 3 * 16 + 1, 3 * 2 + 1 */

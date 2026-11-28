@@ -204,5 +204,48 @@ art_test() {
 }
 art_test
 
+# hard disks D9060/D9090 (DOS 3.0): empty images byte identical to VICE,
+# round trip with every strategy, --check clean
+hd_test() {
+    rm -rf hd && mkdir hd && cd hd || exit 2
+    "$CIT" -n test -i ab e90.d90 > /dev/null 2>&1
+    "$CIT" -D d60 -n test -i ab e60.d90 > /dev/null 2>&1
+    if [ "$(cksum < e90.d90 | cut -d' ' -f1)" = 2958664800 ]; then ok; else bad "D9090: empty image differs from VICE"; fi
+    if [ "$(cksum < e60.d90 | cut -d' ' -f1)" = 801741380 ]; then ok; else bad "D9060: empty image differs from VICE"; fi
+    if "$CIT" e90.d90 | grep -q "^29162 blocks free"; then ok; else bad "D9090: blocks free"; fi
+    head -c 3000 /dev/urandom > a; head -c 200000 /dev/urandom > b; head -c 40 /dev/urandom > c
+    for img in t90.d90 t60.d60; do
+        for alloc in cc1541 dos auto; do
+            rm -f "$img" && rm -rf x && mkdir x
+            "$CIT" --alloc $alloc -n hd -f a -w a -f b -w b -f c -w c "$img" > /dev/null 2>&1
+            if "$CIT" -V "$img" > /dev/null 2>&1 && "$CIT" --check "$img" > /dev/null 2>&1; then ok; else bad "$img $alloc: -V or --check failed"; fi
+            (cd x && "$CIT" -X '*' "../$img" > /dev/null 2>&1)
+            if cmp -s x/a.prg a && cmp -s x/b.prg b && cmp -s x/c.prg c; then ok; else bad "$img $alloc: contents differ"; fi
+        done
+    done
+    cd .. && rm -rf hd
+}
+hd_test
+
+# the tools: --sums, --layout, --block/--poke, --diff, --check, --json
+tools_test() {
+    rm -rf tt && mkdir tt && cd tt || exit 2
+    head -c 3000 /dev/zero | tr '\000' 'A' > a
+    "$CIT" -q -n t -f a -w a -f b -w a k.d64 > /dev/null 2>&1
+    if "$CIT" --sums k.d64 | grep -q '"a" .* 3000  93aaf669'; then ok; else bad "--sums"; fi
+    if "$CIT" --layout a k.d64 | grep -q '(12)'; then ok; else bad "--layout"; fi
+    if "$CIT" --diff k.d64 k.d64 > /dev/null; then ok; else bad "--diff of an image with itself"; fi
+    if "$CIT" --check k.d64 > /dev/null; then ok; else bad "--check of a clean image"; fi
+    cp k.d64 bad.d64
+    "$CIT" -q --poke 1/10:0=99,1 bad.d64
+    if "$CIT" --block 1/10 bad.d64 | grep -q "^00: 63 01"; then ok; else bad "--poke/--block"; fi
+    "$CIT" --check bad.d64 > out 2>&1
+    if [ $? -eq 2 ] && grep -q "invalid block 99/1" out; then ok; else bad "--check of a broken chain"; fi
+    if "$CIT" --diff k.d64 bad.d64 > out 2>&1; then bad "--diff must report the change"; else grep -q "block chain broken" out && ok || bad "--diff output"; fi
+    if "$CIT" --json k.d64 | grep -q '"crc32": "93aaf669"'; then ok; else bad "--json"; fi
+    cd .. && rm -rf tt
+}
+tools_test
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

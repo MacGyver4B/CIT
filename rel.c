@@ -127,6 +127,19 @@ rel_check_index(image_type type, const unsigned char *image, const unsigned char
     if (t != 0) {
         return "data blocks missing in the side sectors";
     }
+    if (first_ss) {
+        /* the super side sector lists the first side sector of every group */
+        const unsigned char *sss = image + linear_sector(type, index[0].track, index[0].sector) * BLOCKSIZE;
+        if (sss[0] != index[1].track || sss[1] != index[1].sector) {
+            return "super side sector does not link to the first side sector";
+        }
+        for (int g = 0; first_ss + g * SS_PER_GROUP < n; g++) {
+            const ts_block *ss = &index[first_ss + g * SS_PER_GROUP];
+            if (sss[3 + 2 * g] != ss->track || sss[4 + 2 * g] != ss->sector) {
+                return "super side sector does not match the side sector groups";
+            }
+        }
+    }
     return NULL;
 }
 

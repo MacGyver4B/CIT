@@ -155,29 +155,12 @@ source_header(image_type type, const unsigned char *image, char *header, char *i
 }
 
 /* one directory entry of the source, NULL at the end */
-typedef enum {
-    ENTRY_FILE,                 /* an entry with its own blocks */
-    ENTRY_DUMMY,                /* no blocks (directory art, separators) */
-    ENTRY_LINK                  /* points to the blocks of an earlier entry */
-} entry_kind;
 
-typedef struct {
-    entry_kind kind;
-    unsigned char filetype;     /* as in the entry: DEL, locked, unclosed ... */
-    unsigned char name[FILENAMEMAXSIZE];
-    unsigned char record_length;
-    int shown_blocks;           /* block count as shown in the directory */
-    int link;                   /* ENTRY_LINK: index of the entry it points to */
-    int start_track;
-    int start_sector;
-    unsigned char *data;
-    int size;
-} source_file;
 
 /* all files of the source image in directory order; used blocks that belong
    to no copied file are counted for a warning */
-static int
-read_source_files(image_type type, const unsigned char *image, source_file **out)
+int
+read_source_files(image_type type, const unsigned char *image, source_file **out, bool warn)
 {
     char *used = calloc(image_num_blocks(type), 1);
     char *blockmap = calloc(image_num_blocks(type), 1);
@@ -243,8 +226,12 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
         f->kind = ENTRY_FILE;
         f->size = read_chain(type, image, f->start_track, f->start_sector, &f->data, used);
         if (f->size < 0) {
-            fprintf(stderr, "WARNING: File \"%s\" has a broken block chain and is not copied\n", aname);
+            /* kept in the list (the tools show it), copying skips it */
             free(f->data);
+            f->data = NULL;
+            f->size = 0;
+            f->broken = true;
+            n++;
             continue;
         }
         if ((ft & 7) == FILETYPEREL) {
@@ -271,7 +258,7 @@ read_source_files(image_type type, const unsigned char *image, source_file **out
             }
         }
     }
-    if (lost > 0) {
+    if (lost > 0 && warn) {
         fprintf(stderr, "WARNING: %d used block%s belong%s to no copied file and %s not copied\n",
                 lost, lost == 1 ? "" : "s", lost == 1 ? "s" : "", lost == 1 ? "is" : "are");
     }
@@ -287,12 +274,18 @@ add_files_from_image(image_type type, const unsigned char *image, imagefile *fil
                      int sector_interleave, int first_sector_new_track, bool new_image)
 {
     source_file *src;
-    int n = read_source_files(type, image, &src);
+    int n = read_source_files(type, image, &src, true);
     int first = *num_files;
     for (int i = 0; i < n; i++) {
         if (*num_files >= MAXNUMFILES) {
             fprintf(stderr, "ERROR: Too many files\n");
             exit(-1);
+        }
+        if (src[i].broken || (src[i].kind == ENTRY_LINK && src[src[i].link].broken)) {
+            char a[3 * FILENAMEMAXSIZE + 1];
+            petscii2ascii(src[i].name, a, FILENAMEMAXSIZE, false);
+            fprintf(stderr, "WARNING: File \"%s\" has a broken block chain and is not copied\n", a);
+            continue;
         }
         imagefile *f = &files[*num_files];
         char *aname = malloc(3 * FILENAMEMAXSIZE + 1);
@@ -440,11 +433,17 @@ unpack_to_folder(image_type type, const unsigned char *image, const char *folder
         }
     }
     source_file *src;
-    int n = read_source_files(type, image, &src);
+    int n = read_source_files(type, image, &src, true);
     write_directory_pet(type, image, folder, src, n);
     for (int i = 0; i < n; i++) {
         /* entries without blocks: 0 byte x00 files; links: a copy of the data */
         const source_file *data = (src[i].kind == ENTRY_LINK) ? &src[src[i].link] : &src[i];
+        if (data->broken) {
+            char a[3 * FILENAMEMAXSIZE + 1];
+            petscii2ascii(src[i].name, a, FILENAMEMAXSIZE, false);
+            fprintf(stderr, "WARNING: File \"%s\" has a broken block chain and is not unpacked\n", a);
+            continue;
+        }
         char name[3 * FILENAMEMAXSIZE + 16];
         x00_name(name, sizeof name, i + 1, src[i].name, src[i].filetype);
         size_t plen = strlen(folder) + strlen(name) + 2;

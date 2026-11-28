@@ -27,15 +27,37 @@ are not kept in the repository.
 | D81 | 1581 | 80 | 40/3 | disk id completed to "3D" like a real 1581 |
 | D80 | 8050 | 77 | 39/1 | BAM on 38/0 and 38/3 |
 | D82 | 8250, SFD-1001 | 154 | 39/1 | BAM on 38/0, 38/3, 38/6, 38/9 |
+| D90 (D9060) | D9060 | 153 x 4 heads | 76/10 | hard disk, DOS 3.0, see below |
+| D90 (D9090) | D9090 | 153 x 6 heads | 76/10 | hard disk, DOS 3.0, see below |
 
-The extension selects the format; `-D d40|d41|d64|d71|d81|d80|d82`
-overrides it (case does not matter). Empty D80/D82 images are byte
+The extension selects the format; `-D d40|d41|d64|d71|d81|d80|d82|d60|d90`
+overrides it (case does not matter). VICE uses `.d90` for both hard disks:
+an existing image tells by its size, a new `.d90` is a D9090 unless
+`-D d60` (or `.d60`) is given. Empty D80/D82 images are byte
 identical to images formatted by VICE.
 
 **Disk id:** the 5 byte id field is "id A0 dos-version". The C64 D64
 (D41) keeps the free 5 character id of cc1541. For all other formats
 `-i` sets the 2 id characters (longer input is shortened, shorter padded
 with A0) and the DOS version comes from the format.
+
+### Hard disks D9060/D9090 ###
+
+DOS 3.0 counts 153 cylinders (track 0-152) with 4 or 6 heads of 32
+sectors; a sector number is head * 32 + sector of the head (128 or 192
+"sectors" per track). Track 0 is part of the image: 0/0 points to the
+directory (76/10), the header (76/20) and the BAM and holds the id; 0/1 is
+the list of bad sectors. The BAM is a chain of blocks on track 1, 9, 17 ...
+(D9090) or 1, 13, 25 ... (D9060), each for 8 or 12 tracks, with an entry of
+5 bytes per track and head. Blocks free counts the directory track, unlike
+the floppy DOS (29162 / 19441 on an empty disk).
+
+Empty images are byte identical to VICE and, apart from the $AA $55 the
+real DOS writes into free blocks, to its N command. `--alloc dos` follows
+DOS 3.0: the first block of every file alternately on track 77 and 75,
+then sector + 10 within a head, the other heads of the track before the
+next track; byte identical to files written by the real D9090 in VICE. REL
+files get a super side sector.
 
 ### Block allocation (`--alloc`) ###
 
@@ -164,8 +186,35 @@ Layout:
 * `-XA`: extract with conversion (BASIC as text in `petcat` notation,
   load address as `[la0801]`, only where the way back is lossless)
 * writing REL files from the command line (`-T REL` with a record length)
-* D67 (2040), D60/D90 (D9060/D9090), DNP, CMD containers, error tables,
-  G64/G71/NIB in raw.c
+* D67 (2040), DNP, CMD containers, error tables, G64/G71/NIB in raw.c
+* Transwarp: `-V`/`--check` message, decoding unencrypted files back to PRG
+* `.zip`/`.7z` archives through 7-Zip
+
+### Looking into images ###
+
+These only read the image (`--poke` changes it); without anything else to
+do, cit stops after them.
+
+* `--sums` - CRC32 and size of every file in directory order (REL: the
+  data), entries without blocks, links and broken chains marked
+* `--layout name` - the blocks of the matching files (wildcards as `-X`) in
+  chain order; REL files with super side sector, side sectors and whether
+  the index matches
+* `--block t/s` - hex dump of a block; `--poke t/s:offset=value[,...]` sets
+  bytes (numbers decimal, or hex with `0x` or `$`), for test cases and
+  patches; several are done in the order given
+* `--diff other` - compares with another image part by part: header,
+  directory entries, file contents (CRC32) and layout (first differing
+  block), BAM per track, used blocks; free blocks and the buffer rest
+  behind a file end are ignored. Exit code 1 if they differ.
+* `--check` - everything that is wrong, sorted: problems (broken or looping
+  chains, blocks of two files, REL index, directory chain), repairable
+  (BAM counters, used blocks of no file, blocks in use but free in the BAM,
+  unclosed files) and notes (directory art links, Transwarp data, block
+  counts shown). Exit code 0 clean, 1 repairable, 2 problems. `-V` still
+  only guards against changing a broken image.
+* `--json` - format, header, blocks free, every entry (type, flags, size,
+  crc32, blocks) and free blocks per track, for scripts or a GUI
 
 ### Settings (`cit.ini`) ###
 

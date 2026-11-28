@@ -74,6 +74,24 @@ usage(void)
     printf("              A new target is a folder unless it has an image extension\n");
     printf("              or -D is given. Not copied (with a warning): REL files into\n");
     printf("              images, GEOS files, used blocks of no file, error tables.\n");
+    printf("--layout name Blocks of the files matching name in chain order (wildcards\n");
+    printf("              as -X); REL files with super side sector and side sectors.\n");
+    printf("--block t/s   Hex dump of block t/s.\n");
+    printf("--poke t/s:offset=value[,value...]  Set bytes of block t/s. Numbers are\n");
+    printf("              decimal, or hex with 0x or $ in front. Several --block and\n");
+    printf("              --poke are done in the order given.\n");
+    printf("--json        The image as JSON: format, header, blocks free, every entry\n");
+    printf("              (type, size, crc32, blocks), free blocks per track.\n");
+    printf("--check       Report everything that is wrong: problems (data at risk),\n");
+    printf("              repairable things, notes. Exit code 0 clean, 1 repairable,\n");
+    printf("              2 problems. -V still only guards against changing a broken\n");
+    printf("              image.\n");
+    printf("--diff other  Compare with another image: header, directory, file contents\n");
+    printf("              and layout, BAM, used blocks (free blocks and the buffer rest\n");
+    printf("              behind a file end are ignored). Exit code 1 if they differ.\n");
+    printf("--sums        List CRC32 and size of every file (REL: the data).\n");
+    printf("              The tools only read the image (--poke changes it); without\n");
+    printf("              anything else to do, cit stops after them.\n");
     printf("--config file Settings file instead of cit.ini (next to the program, or\n");
     printf("              %%APPDATA%%\\cit, ~/.config/cit): petcat, 7z, alloc.new, alloc.existing,\n");
     printf("              disk.name; the command line wins.\n");
@@ -1819,6 +1837,15 @@ main(int argc, char* argv[])
     bool alloc_explicit = false;      /* --alloc given */
     const char *convert_path = NULL;     /* --convert: source image or folder */
     bool name_set = false;            /* -n given */
+    bool tool_only = false;           /* only looking into the image (tools.c) */
+    bool do_sums = false;             /* --sums */
+    const char *layout_pattern = NULL; /* --layout */
+    const char *diff_path = NULL;     /* --diff */
+    bool do_check = false;            /* --check */
+    bool do_json = false;             /* --json */
+    const char *tool_args[MAXNUMFILES]; /* --block and --poke in their order */
+    bool tool_is_poke[MAXNUMFILES];
+    int num_tool_args = 0;
     unsigned char dirpos_name[FILENAMEMAXSIZE];
     int dirpos = 0;                   /* --dirpos: position, 0 = none */
     bool d40 = false;                 /* -D d40: only what DOS 2.x (2031/4040) can read */
@@ -2120,6 +2147,40 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Argument must be between 0 and 65535 for -B\n");
                 return -1;
             }
+        } else if (strcmp(argv[j], "--layout") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --layout\n");
+                return -1;
+            }
+            layout_pattern = argv[++j];
+            tool_only = true;
+        } else if (strcmp(argv[j], "--block") == 0 || strcmp(argv[j], "--poke") == 0) {
+            if (argc < j + 2 || num_tool_args >= MAXNUMFILES) {
+                fprintf(stderr, "ERROR: Error parsing argument for %s\n", argv[j]);
+                return -1;
+            }
+            tool_is_poke[num_tool_args] = (strcmp(argv[j], "--poke") == 0);
+            if (tool_is_poke[num_tool_args]) {
+                modified = 1;
+            }
+            tool_args[num_tool_args++] = argv[++j];
+            tool_only = true;
+        } else if (strcmp(argv[j], "--json") == 0) {
+            do_json = true;
+            tool_only = true;
+        } else if (strcmp(argv[j], "--check") == 0) {
+            do_check = true;
+            tool_only = true;
+        } else if (strcmp(argv[j], "--diff") == 0) {
+            if (argc < j + 2) {
+                fprintf(stderr, "ERROR: Error parsing argument for --diff\n");
+                return -1;
+            }
+            diff_path = argv[++j];
+            tool_only = true;
+        } else if (strcmp(argv[j], "--sums") == 0) {
+            do_sums = true;
+            tool_only = true;
         } else if (strcmp(argv[j], "--config") == 0) {
             j++; /* read before the other options */
         } else if (strcmp(argv[j], "--dirpos") == 0) {
@@ -2544,7 +2605,7 @@ main(int argc, char* argv[])
         }
         initialize_directory(type, image, header, id, bam_message, shadowdirtrack, usedirtrack);
     } else {
-        if (!quiet) {
+        if (!quiet && !(tool_only && num_files == 0)) {
             printf("Adding %d files to existing image %s\n", num_files, basename((unsigned char*)imagepath));
         }
         size_t read_size = fread(image, 1, imagesize, f);
@@ -2583,6 +2644,36 @@ main(int argc, char* argv[])
 
     /* Extract files */
     extract_files(type, image, extractions, num_extractions);
+
+    /* Looking into the image */
+    if (do_sums) {
+        tool_sums(type, image);
+    }
+    if (layout_pattern != NULL) {
+        tool_layout(type, image, layout_pattern);
+    }
+    if (do_json) {
+        tool_json(type, image);
+    }
+    if (do_check) {
+        int c = tool_check(type, image);
+        retval = (c > retval) ? c : retval;
+    }
+    if (diff_path != NULL) {
+        int d = tool_diff(type, image, diff_path);
+        retval = (d < 0) ? -1 : (d > 0) ? 1 : retval;
+    }
+    for (int k = 0; k < num_tool_args; k++) {
+        bool ok = tool_is_poke[k] ? tool_poke(type, image, tool_args[k]) : tool_block(type, image, tool_args[k]);
+        if (!ok) {
+            free(image);
+            return -1;
+        }
+    }
+    if (tool_only && !modified && num_files == 0 && num_patches == 0) {
+        free(image);
+        return retval;
+    }
 
     /* Apply patches */
     apply_patches(type, image, patches, num_patches);
