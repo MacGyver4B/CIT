@@ -20,16 +20,23 @@ INSTALL ?= install
 
 VERSION := $(shell grep 'define VERSION' cit.c | cut -d\" -f2)
 
-CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h *.in LICENSE* README*)
+CIT_SRC := Makefile transwarp\ v0.84.prg transwarp\ v0.86.prg $(wildcard *.c *.h *.in LICENSE* README* fatfs/*)
 
 all: $(ALL_TARGETS)
 
-CIT_OBJS = cit.o image.o alloc.o copy.o rel.o config.o tools.o petscii.o gcr.o transwarp.o raw.o undelete.o
+CIT_OBJS = cit.o image.o alloc.o copy.o rel.o config.o tools.o petscii.o gcr.o transwarp.o raw.o undelete.o sd.o
+FATFS_OBJS = fatfs/ff.o fatfs/ffunicode.o
 
 $(CIT_OBJS): cit.h
+sd.o: fatfs/ff.h fatfs/ffconf.h fatfs/diskio.h
 
-cit: $(CIT_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $(CIT_OBJS) $(LDLIBS)
+# FatFs as it is, without the warnings of our own code
+$(FATFS_OBJS): fatfs/ff.h fatfs/ffconf.h
+fatfs/%.o: fatfs/%.c
+	$(CC) -std=c99 -pipe -O2 -c -o $@ $<
+
+cit: $(CIT_OBJS) $(FATFS_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(CIT_OBJS) $(FATFS_OBJS) $(LDLIBS)
 
 cit.1.txt: cit.1.txt.in
 	sed -e "s/@@VERSION@@/$(VERSION)/g" < cit.1.txt.in > cit.1.txt
@@ -57,8 +64,8 @@ REF ?= cc1541-4.2
 compare: cit
 	$(NOCONFIG) ./tests/compare.sh $(REF) ./cit
 
-cit_asan: $(CIT_OBJS:.o=.c) cit.h
-	$(CC) $(CFLAGS) -g -fsanitize=address -fsanitize=undefined -o $@ $(CIT_OBJS:.o=.c)
+cit_asan: $(CIT_OBJS:.o=.c) $(FATFS_OBJS:.o=.c) cit.h
+	$(CC) $(CFLAGS) -g -fsanitize=address -fsanitize=undefined -o $@ $(CIT_OBJS:.o=.c) $(FATFS_OBJS:.o=.c)
 
 asantest: cit_asan test_cit
 	./test_cit ./cit_asan
@@ -123,7 +130,7 @@ wrap: cit.1.txt.in LICENSE.txt README.md
 	done
 
 clean:
-	rm -rf cit-$(VERSION)/ *~ README.md.T *.o *.orig cit cit_asan test_cit cit-$(VERSION).* cit.1 cit.1.txt
+	rm -rf cit-$(VERSION)/ *~ README.md.T *.o fatfs/*.o *.orig cit cit_asan test_cit cit-$(VERSION).* cit.1 cit.1.txt
 
 .PHONY: all check clean compare codestyle dist dist-all dist-bz2 dist-check dist-gz dist-xz dist-zip install man test wrap
 

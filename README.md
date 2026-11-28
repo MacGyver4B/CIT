@@ -186,10 +186,12 @@ Layout:
 
 * `-XA`: extract with conversion (BASIC as text in `petcat` notation,
   load address as `[la0801]`, only where the way back is lossless)
-* writing REL files from the command line (`-T REL` with a record length)
 * D67 (2040), DNP, CMD containers, error tables, G64/G71/NIB in raw.c
 * Transwarp: `-V`/`--check` message, decoding unencrypted files back to PRG
 * `.zip`/`.7z` archives through 7-Zip
+* SD cards and USB sticks: reading a card into an image and writing an
+  image back (Windows and Linux, removable drives only, with a question
+  before writing and a check after it)
 
 ### Looking into images ###
 
@@ -230,6 +232,32 @@ do, cit stops after them.
   only guards against changing a broken image.
 * `--json` - format, header, blocks free, every entry (type, flags, size,
   crc32, blocks) and free blocks per track, for scripts or a GUI
+
+### Images of SD cards and USB sticks ###
+
+Images of FAT file systems up to 32 GB, as SD2IEC, petSD, Kung Fu Flash or
+Pi1541 use them. cit handles the file system itself (FatFs, see
+`fatfs/LICENSE.txt`): nothing is mounted, no administrator rights.
+
+```
+cit --sd-new   card.img 2G "GAMES"     new image, formatted
+cit --sd-info  card.img                file system, size, free space
+cit --sd-dir   card.img /games         list a folder
+cit --sd-put   card.img --to /games giana.d64 demos   files and folders in
+cit --sd-get   card.img --to backup /games            files and folders out
+cit --sd-mkdir card.img /games/pet
+cit --sd-del   card.img /games/old.d64 /games/old     files, empty folders
+```
+
+New images have no partition table: the file system starts at sector 0,
+as on most USB sticks. FAT32 from 64 MB on, smaller ones FAT12/FAT16; sizes
+as `64M` or `2G`. Images with a partition table are read and changed too
+(the first partition). Names may be long and hold umlauts.
+
+Windows cannot mount such an image by itself (only CD images); OSFMount
+(PassMark, free) can: choose "Disk" instead of a RAM drive and switch off
+"read-only", or the changes only stay in its cache. A mounted image appears
+as a removable drive, which is why no partition table is needed.
 
 ### Settings (`cit.ini`) ###
 

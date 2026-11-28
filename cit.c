@@ -1801,6 +1801,11 @@ main(int argc, char* argv[])
     char* imagepath = NULL;
     char* filename_g64 = NULL;
 
+    /* cit --sd-...: images of SD cards and USB sticks */
+    if (argc >= 2 && strncmp(argv[1], "--sd-", 5) == 0) {
+        return sd_main(argc, argv);
+    }
+
     /* cit --sums file...: only checksums, of images or any other files */
     if (argc >= 3) {
         bool only_files = true;

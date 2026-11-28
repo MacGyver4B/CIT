@@ -260,5 +260,37 @@ tools_test() {
 }
 tools_test
 
+# images of SD cards: format, copy in and out, folders, delete; fsck.fat
+# checks the file system when it is installed
+sd_test() {
+    rm -rf sdt && mkdir sdt && cd sdt || return
+    for size in 1M 32M 64M 2G; do
+        "$CIT" --sd-new n$size.img $size "CIT TEST" > /dev/null || { bad "--sd-new $size"; continue; }
+        if command -v fsck.fat > /dev/null; then
+            fsck.fat -n n$size.img > /dev/null 2>&1 && ok || bad "fsck.fat after --sd-new $size"
+        fi
+    done
+    "$CIT" --sd-info n2G.img | grep -q "FAT32" && ok || bad "--sd-new 2G must be FAT32"
+    "$CIT" --sd-info n2G.img | grep -q "no partition table" && ok || bad "--sd-new without partition table"
+    if "$CIT" --sd-new big.img 33G 2> /dev/null; then bad "--sd-new over 32 GB"; else ok; fi
+    mkdir -p src/games/pet; head -c 174848 /dev/urandom > src/games/a.d64
+    head -c 3000000 /dev/urandom > "src/games/pet/b c.prg"; : > src/games/empty.seq
+    "$CIT" --sd-put n64M.img src/games > /dev/null && ok || bad "--sd-put"
+    "$CIT" --sd-mkdir n64M.img /x /x/y > /dev/null && ok || bad "--sd-mkdir"
+    "$CIT" --sd-put n64M.img --to /x/y src/games/a.d64 > /dev/null && ok || bad "--sd-put --to"
+    "$CIT" --sd-dir n64M.img /games/pet | grep -q "3000000  b c.prg" && ok || bad "--sd-dir"
+    mkdir out
+    "$CIT" --sd-get n64M.img --to out /games /x/y/a.d64 > /dev/null && ok || bad "--sd-get"
+    diff -r src/games out/games > /dev/null && cmp -s src/games/a.d64 out/a.d64 && ok || bad "--sd-put/--sd-get round trip"
+    if "$CIT" --sd-del n64M.img /x 2> /dev/null; then bad "--sd-del of a folder that is not empty"; else ok; fi
+    "$CIT" --sd-del n64M.img /x/y/a.d64 /x/y /x > /dev/null && ok || bad "--sd-del"
+    if "$CIT" --sd-get n64M.img --to out /x 2> /dev/null; then bad "--sd-get of a deleted folder"; else ok; fi
+    if command -v fsck.fat > /dev/null; then
+        fsck.fat -n n64M.img > /dev/null 2>&1 && ok || bad "fsck.fat after copying and deleting"
+    fi
+    cd .. && rm -rf sdt
+}
+sd_test
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]
