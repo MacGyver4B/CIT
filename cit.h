@@ -311,6 +311,7 @@ typedef struct {
                                    for reading and writing .zip/.7z (planned) */
     const char *osfmount;       /* path of OSFMount.com, NULL = default, see
                                    osfmount_path(); for --sd-mount */
+    char sd_letter;             /* drive letter for --sd-mount, 0 = S */
     int alloc_new;              /* strategy for a new image, -1 = built-in */
     int alloc_existing;         /* strategy when adding files, -1 = built-in */
     const char *disk_name;      /* disk name without -n, NULL = "cit" */

@@ -258,12 +258,13 @@ Windows cannot mount such an image by itself (only CD images); OSFMount
 (PassMark, free) can, and cit calls it:
 
 ```
-cit --sd-mount   card.img        first free drive letter, read/write
+cit --sd-mount   card.img        as S: (sd.letter), read/write
 cit --sd-mount   card.img J:     this one
 cit --sd-unmount J:
 ```
 
-This runs `OSFMount.com -a -t file -f card.img -m J: -o rw,rem,logical`: a
+Without a letter cit takes `sd.letter` from `cit.ini`, else S:; if that is
+in use, the first free letter from D: on. This runs `OSFMount.com -a -t file -f card.img -m J: -o rw,rem,logical`: a
 removable drive, which is why Windows takes FAT without partition table
 (an image with partition table is mounted with `-v 1`). OSFMount needs
 administrator rights. Its path comes from `osfmount` in `cit.ini`, else
@@ -285,6 +286,7 @@ petcat = C:\VICE\bin\petcat.exe   ; for -XA, else searched in PATH
 7z     = C:\Program Files\7-Zip\7z.exe   ; for .zip/.7z archives (planned)
 osfmount = C:\Program Files\OSFMount\OSFMount.com   ; for --sd-mount;
                  ; this is the default, else searched in PATH
+sd.letter = S                    ; drive letter for --sd-mount (default S)
 
 ; defaults
 alloc.new      = auto            ; strategy for a new image

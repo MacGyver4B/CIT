@@ -15,6 +15,7 @@
  *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
  *   osfmount       = path of OSFMount.com, for --sd-mount (Windows);
  *                    default C:\Program Files\OSFMount\OSFMount.com, else PATH
+ *   sd.letter      = drive letter for --sd-mount (default S)
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files
  *   disk.name      = disk name without -n
@@ -24,7 +25,7 @@
 
 #include "cit.h"
 
-cit_config config = { .petcat = NULL, .sevenzip = NULL, .osfmount = NULL, .alloc_new = -1, .alloc_existing = -1, .disk_name = NULL, .path = NULL };
+cit_config config = { .petcat = NULL, .sevenzip = NULL, .osfmount = NULL, .sd_letter = 0, .alloc_new = -1, .alloc_existing = -1, .disk_name = NULL, .path = NULL };
 
 static char *
 copy_string(const char *s)
@@ -99,6 +100,13 @@ read_config(const char *path)
             config.sevenzip = copy_string(value);
         } else if (strcasecmp(key, "osfmount") == 0) {
             config.osfmount = copy_string(value);
+        } else if (strcasecmp(key, "sd.letter") == 0) {
+            char c = (char)toupper((unsigned char)value[0]);
+            if (c >= 'A' && c <= 'Z' && (value[1] == 0 || (value[1] == ':' && value[2] == 0))) {
+                config.sd_letter = c;
+            } else {
+                fprintf(stderr, "WARNING: %s line %d: sd.letter must be a drive letter like S\n", path, number);
+            }
         } else if (strcasecmp(key, "alloc.new") == 0 || strcasecmp(key, "alloc.existing") == 0) {
             int a = alloc_from_name(value);
             if (a < 0) {

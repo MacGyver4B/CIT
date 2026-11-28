@@ -8,7 +8,7 @@
  *   cit --sd-get   image [--to folder] path...   copy files/folders out
  *   cit --sd-del   image path...        delete files and empty folders
  *   cit --sd-mkdir image folder...      create folders
- *   cit --sd-mount image [X:]           mount on Windows (OSFMount)
+ *   cit --sd-mount image [X:]           mount on Windows (OSFMount), default S:
  *   cit --sd-unmount X:                 dismount it again
  *
  * The file system is handled by FatFs (fatfs/, see fatfs/LICENSE.txt), so
@@ -730,15 +730,22 @@ sd_mount(const char *image, const char *letter_text)
             return -1;
         }
     } else {
-        for (char c = 'D'; c <= 'Z'; c++) {
-            if (!(used & (1UL << (c - 'A')))) {
-                letter = c;
-                break;
+        /* sd.letter from cit.ini, else S:; if that is taken the first free one */
+        char wanted = config.sd_letter ? config.sd_letter : 'S';
+        if (!(used & (1UL << (wanted - 'A')))) {
+            letter = wanted;
+        } else {
+            for (char c = 'D'; c <= 'Z'; c++) {
+                if (!(used & (1UL << (c - 'A')))) {
+                    letter = c;
+                    break;
+                }
             }
-        }
-        if (letter == 0) {
-            fprintf(stderr, "ERROR: No free drive letter\n");
-            return -1;
+            if (letter == 0) {
+                fprintf(stderr, "ERROR: No free drive letter\n");
+                return -1;
+            }
+            printf("%c: is in use, taking %c:\n", wanted, letter);
         }
     }
     char args[MAX_PATH + 128];
