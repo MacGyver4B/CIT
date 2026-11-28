@@ -13,7 +13,8 @@
  *
  *   petcat         = path of petcat (VICE), for -XA
  *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
- *   osfmount       = path of OSFMount.com, for mounting SD images on Windows (planned)
+ *   osfmount       = path of OSFMount.com, for mounting SD images on Windows (planned);
+ *                    default C:\Program Files\OSFMount\OSFMount.com, else PATH
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files
  *   disk.name      = disk name without -n
@@ -171,4 +172,23 @@ load_config(const char *program, const char *explicit_path)
     }
     read_config(path);
 #endif
+}
+
+/* OSFMount.com: from cit.ini, else where its installer puts it, else
+   searched in PATH */
+const char *
+osfmount_path(void)
+{
+    if (config.osfmount != NULL) {
+        return config.osfmount;
+    }
+#ifdef _WIN32
+    static const char *installed = "C:\\Program Files\\OSFMount\\OSFMount.com";
+    FILE *f = fopen(installed, "rb");
+    if (f != NULL) {
+        fclose(f);
+        return installed;
+    }
+#endif
+    return "OSFMount.com";
 }
