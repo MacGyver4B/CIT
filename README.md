@@ -297,6 +297,13 @@ as on most USB sticks. FAT32 from 64 MB on, smaller ones FAT12/FAT16; sizes
 as `64M` or `2G`. Images with a partition table are read and changed too
 (the first partition). Names may be long and hold umlauts.
 
+Copying the files of an image onto a card in use (it keeps its size and
+format): `cit --sd-get card.img --to E:\ /` copies everything and
+overwrites files of the same name. `--clean` deletes everything in the
+target folder first, after showing how much and asking (`--yes` skips the
+question). It only works on removable drives; `--force` allows other
+folders, but never the root of the system drive or the home folder.
+
 Reading and writing the card itself:
 
 ```

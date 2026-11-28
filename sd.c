@@ -37,6 +37,9 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <time.h>
+#ifndef _WIN32
+#include <unistd.h>             /* rmdir */
+#endif
 #ifdef _WIN32
 #include <io.h>
 #include <windows.h>
@@ -805,6 +808,145 @@ sd_unmount(const char *letter_text)
 }
 #endif
 
+/* --sd-get --clean: counts or deletes everything in a local folder,
+   without following links. Returns -1 on an error */
+static int
+clean_walk(const char *folder, bool delete_it, int *files, int *dirs)
+{
+    DIR *d = opendir(folder);
+    if (d == NULL) {
+        fprintf(stderr, "ERROR: Could not read folder %s\n", folder);
+        return -1;
+    }
+    struct dirent *de;
+    int ret = 0;
+    while (ret == 0 && (de = readdir(d)) != NULL) {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) {
+            continue;
+        }
+        char p[4096];
+        snprintf(p, sizeof p, "%s/%s", folder, de->d_name);
+        struct stat st;
+#ifdef _WIN32
+        if (stat(p, &st) != 0) {
+#else
+        if (lstat(p, &st) != 0) {
+#endif
+            continue;
+        }
+        if (S_ISDIR(st.st_mode)) {
+            ret = clean_walk(p, delete_it, files, dirs);
+            (*dirs)++;
+            if (ret == 0 && delete_it && rmdir(p) != 0) {
+                fprintf(stderr, "ERROR: Could not delete folder %s\n", p);
+                ret = -1;
+            }
+        } else {
+            (*files)++;
+            if (delete_it && remove(p) != 0) {
+                fprintf(stderr, "ERROR: Could not delete %s\n", p);
+                ret = -1;
+            }
+        }
+    }
+    closedir(d);
+    return ret;
+}
+
+/* the same folder? (full paths, without trailing separators) */
+static bool
+same_folder(const char *a, const char *b)
+{
+    char fa[4096], fb[4096];
+#ifdef _WIN32
+    if (_fullpath(fa, a, sizeof fa) == NULL || _fullpath(fb, b, sizeof fb) == NULL) {
+        return false;
+    }
+#else
+    if (realpath(a, fa) == NULL || realpath(b, fb) == NULL) {
+        return false;
+    }
+#endif
+    for (char *p = fa; *p; p++) {
+        *p = (*p == '\\') ? '/' : *p;
+    }
+    for (char *p = fb; *p; p++) {
+        *p = (*p == '\\') ? '/' : *p;
+    }
+    size_t la = strlen(fa), lb = strlen(fb);
+    while (la > 1 && fa[la - 1] == '/') {
+        fa[--la] = 0;
+    }
+    while (lb > 1 && fb[lb - 1] == '/') {
+        fb[--lb] = 0;
+    }
+#ifdef _WIN32
+    return strcasecmp(fa, fb) == 0;
+#else
+    return strcmp(fa, fb) == 0;
+#endif
+}
+
+/* empties the target folder of --sd-get --clean. Only on a removable
+   drive, other folders with --force; never the root of the system drive
+   or the home folder. Asks unless yes. 0 = done or nothing to do */
+static int
+clean_target(const char *folder, bool yes, bool force)
+{
+    struct stat st;
+    if (stat(folder, &st) != 0) {
+        return 0;                               /* nothing there yet */
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "ERROR: %s is no folder\n", folder);
+        return -1;
+    }
+#ifdef _WIN32
+    char sysroot[4] = "C:\\";
+    char sysdir[MAX_PATH];
+    if (GetSystemDirectoryA(sysdir, sizeof sysdir) > 0) {
+        sysroot[0] = sysdir[0];
+    }
+    const char *home = getenv("USERPROFILE");
+#else
+    const char *sysroot = "/";
+    const char *home = getenv("HOME");
+#endif
+    if (same_folder(folder, sysroot) || (home != NULL && home[0] && same_folder(folder, home))) {
+        fprintf(stderr, "ERROR: --clean is never allowed on %s\n", folder);
+        return -1;
+    }
+    if (!force && !path_on_removable(folder)) {
+        fprintf(stderr, "ERROR: %s is not on a removable drive; --clean only empties cards and sticks "
+                        "(--force for other folders)\n", folder);
+        return -1;
+    }
+    int files = 0, dirs = 0;
+    if (clean_walk(folder, false, &files, &dirs) != 0) {
+        return -1;
+    }
+    if (files == 0 && dirs == 0) {
+        return 0;
+    }
+    printf("%s: %d files and %d folders will be deleted before copying.\n", folder, files, dirs);
+    if (!yes) {
+        printf("Continue? (yes/no) ");
+        fflush(stdout);
+        char answer[16] = "";
+        if (fgets(answer, sizeof answer, stdin) == NULL || (strncasecmp(answer, "yes", 3) != 0
+                && !(tolower((unsigned char)answer[0]) == 'y' && (answer[1] == '\n' || answer[1] == 0)))) {
+            printf("Nothing deleted, nothing copied.\n");
+            return -1;
+        }
+    }
+    files = dirs = 0;
+    if (clean_walk(folder, true, &files, &dirs) != 0) {
+        return -1;
+    }
+    printf("%d files and %d folders deleted\n", files, dirs);
+    return 0;
+}
+
 static void
 usage_sd(void)
 {
@@ -812,7 +954,7 @@ usage_sd(void)
                     "       cit --sd-info image\n"
                     "       cit --sd-dir image [folder]\n"
                     "       cit --sd-put image [--to folder] file|folder...\n"
-                    "       cit --sd-get image [--to folder] path...\n"
+                    "       cit --sd-get image [--to folder] [--clean [--yes] [--force]] path...\n"
                     "       cit --sd-del image path...\n"
                     "       cit --sd-mkdir image folder...\n"
                     "       cit --sd-mount image [X:]       (Windows, OSFMount)\n"
@@ -860,13 +1002,25 @@ sd_main(int argc, char **argv)
     if (strcmp(cmd, "--sd-dir") == 0) {
         return sd_dir(image, argc > 3 ? argv[3] : NULL);
     }
-    int first = 3;
+    /* the rest: --to folder, --clean, --yes, --force, then the paths */
     const char *to = NULL;
-    if (argc > 4 && strcmp(argv[3], "--to") == 0) {
-        to = argv[4];
-        first = 5;
+    bool clean = false, yes = false, force = false;
+    const char *paths[256];
+    int npaths = 0;
+    for (int i = 3; i < argc; i++) {
+        if (strcmp(argv[i], "--to") == 0 && i + 1 < argc) {
+            to = argv[++i];
+        } else if (strcmp(argv[i], "--clean") == 0) {
+            clean = true;
+        } else if (strcmp(argv[i], "--yes") == 0) {
+            yes = true;
+        } else if (strcmp(argv[i], "--force") == 0) {
+            force = true;
+        } else if (npaths < 256) {
+            paths[npaths++] = argv[i];
+        }
     }
-    if (first >= argc) {
+    if (npaths == 0 || ((clean || yes || force) && strcmp(cmd, "--sd-get") != 0)) {
         usage_sd();
         return -1;
     }
@@ -878,17 +1032,21 @@ sd_main(int argc, char **argv)
         }
         char folder[1024];
         to_fat_name(to != NULL ? to : "/", folder, sizeof folder);
-        for (int i = first; i < argc && ret == 0; i++) {
-            ret = put_path(argv[i], folder, &count);
+        for (int i = 0; i < npaths && ret == 0; i++) {
+            ret = put_path(paths[i], folder, &count);
         }
         printf("%d file%s copied into %s\n", count, count == 1 ? "" : "s", image);
     } else if (strcmp(cmd, "--sd-get") == 0) {
         if (sd_open(image, false) != 0) {
             return -1;
         }
-        for (int i = first; i < argc && ret == 0; i++) {
+        if (clean && clean_target(to != NULL ? to : ".", yes, force) != 0) {
+            sd_close();
+            return -1;
+        }
+        for (int i = 0; i < npaths && ret == 0; i++) {
             char p[1024];
-            to_fat_name(argv[i], p, sizeof p);
+            to_fat_name(paths[i], p, sizeof p);
             ret = get_path(p, to != NULL ? to : ".", &count);
         }
         printf("%d file%s copied from %s\n", count, count == 1 ? "" : "s", image);
@@ -901,12 +1059,12 @@ sd_main(int argc, char **argv)
         if (sd_open(image, true) != 0) {
             return -1;
         }
-        for (int i = first; i < argc; i++) {
+        for (int i = 0; i < npaths; i++) {
             char p[1024];
-            to_fat_name(argv[i], p, sizeof p);
+            to_fat_name(paths[i], p, sizeof p);
             FRESULT r = del ? f_unlink(p) : f_mkdir(p);
             if (r != FR_OK) {
-                fprintf(stderr, "ERROR: %s: %s%s\n", argv[i], fresult_text(r),
+                fprintf(stderr, "ERROR: %s: %s%s\n", paths[i], fresult_text(r),
                         (del && r == FR_DENIED) ? " (a folder must be empty)" : "");
                 ret = -1;
             }

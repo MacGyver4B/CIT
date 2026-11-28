@@ -303,6 +303,13 @@ sd_test() {
     CIT_TEST_DEVICE=card.bin "$CIT" --sd-read test back.img > /dev/null 2>&1 && cmp -s back.img card.bin && ok || bad "--sd-read"
     if CIT_TEST_DEVICE=card.bin "$CIT" --sd-write n2G.img test --yes > /dev/null 2>&1; then bad "an image larger than the card must be refused"; else ok; fi
     if "$CIT" --sd-write n64M.img /dev/vda --yes > /dev/null 2>&1; then bad "a fixed disk must be refused"; else ok; fi
+    # --sd-get --clean: only on removable drives (here a folder stands in)
+    mkdir -p fix stick/old/deep; echo x > fix/keep; echo y > stick/old/deep/z
+    if "$CIT" --sd-get n64M.img --to fix --clean --yes /games > /dev/null 2>&1; then bad "--clean outside a removable drive"; else ok; fi
+    [ -f fix/keep ] && ok || bad "--clean must not touch a fixed folder"
+    CIT_TEST_REMOVABLE=stick "$CIT" --sd-get n64M.img --to stick --clean --yes /games > /dev/null 2>&1 && ok || bad "--clean --yes"
+    [ ! -e stick/old ] && [ -f stick/games/a.d64 ] && ok || bad "--clean must empty the stick, then copy"
+    if HOME="$(pwd)/fix" "$CIT" --sd-get n64M.img --to fix --clean --force --yes /games > /dev/null 2>&1; then bad "--clean on the home folder"; else ok; fi
     cd .. && rm -rf sdt
 }
 sd_test

@@ -734,3 +734,74 @@ sdcard_main(int argc, char **argv)
     }
     return sd_write(a[0], a[1], yes);
 }
+
+/* true if path lies on a removable drive of the list (for --sd-get --clean);
+   CIT_TEST_REMOVABLE=folder counts that folder as removable for the tests */
+bool
+path_on_removable(const char *path)
+{
+#ifdef _WIN32
+    char full[MAX_PATH];
+    if (_fullpath(full, path, sizeof full) == NULL) {
+        return false;
+    }
+#else
+    char full[4096];
+    if (realpath(path, full) == NULL) {
+        return false;
+    }
+#endif
+    const char *t = getenv("CIT_TEST_REMOVABLE");
+    if (t != NULL && t[0]) {
+#ifdef _WIN32
+        char tf[MAX_PATH];
+        if (_fullpath(tf, t, sizeof tf) != NULL && strncasecmp(full, tf, strlen(tf)) == 0) {
+            return true;
+        }
+#else
+        char tf[4096];
+        if (realpath(t, tf) != NULL && strncmp(full, tf, strlen(tf)) == 0) {
+            return true;
+        }
+#endif
+    }
+    card_t cards[MAX_DRIVES];
+    bool larger;
+    int n = list_cards(cards, MAX_DRIVES, &larger);
+#ifdef _WIN32
+    if (full[1] != ':') {
+        return false;
+    }
+    char letter = (char)toupper((unsigned char)full[0]);
+    for (int i = 0; i < n; i++) {
+        if (strchr(cards[i].letters, letter) != NULL) {
+            return true;
+        }
+    }
+    return false;
+#else
+    /* the device mounted at the longest matching mount point */
+    FILE *mf = fopen("/proc/mounts", "r");
+    if (mf == NULL) {
+        return false;
+    }
+    char dev[256], dir[1024], best[256] = "";
+    size_t best_len = 0;
+    while (fscanf(mf, "%255s %1023s %*[^\n]", dev, dir) == 2) {
+        size_t l = strlen(dir);
+        bool match = strcmp(dir, "/") == 0 || (strncmp(full, dir, l) == 0 && (full[l] == '/' || full[l] == 0));
+        if (match && l >= best_len) {
+            best_len = l;
+            snprintf(best, sizeof best, "%s", dev);
+        }
+    }
+    fclose(mf);
+    for (int i = 0; i < n; i++) {
+        size_t l = strlen(cards[i].path);
+        if (l > 5 && strncmp(best, cards[i].path, l) == 0) {
+            return true;                        /* /dev/sdb1 on /dev/sdb */
+        }
+    }
+    return false;
+#endif
+}

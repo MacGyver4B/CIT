@@ -393,6 +393,7 @@ void sums_of(const unsigned char *data, long size, file_sums *s);
 int tool_sums_files(int count, char **paths);
 int sd_main(int argc, char **argv);
 int sdcard_main(int argc, char **argv);
+bool path_on_removable(const char *path);
 void tool_sums(image_type type, const unsigned char *image);
 void tool_layout(image_type type, const unsigned char *image, const char *pattern);
 bool tool_block(image_type type, const unsigned char *image, const char *arg);
