@@ -292,5 +292,68 @@ sd_test() {
 }
 sd_test
 
+# -XA and the way back: SEQ as text, REL as CSV, BASIC through petcat (if
+# installed); every way back must give the same bytes
+xa_test() {
+    rm -rf xat && mkdir xat && cd xat || return
+    printf 'Hallo\rWelt\r' | tr 'a-z' 'A-Z' > brief.seq
+    head -c 100 /dev/urandom > bin.seq
+    printf 'AB\000CD\000\rE' > z.seq
+    # REL with 3 records of 16 bytes: text, unused, binary
+    { printf 'MEIER\r 1250 \r'; head -c 3 /dev/zero; printf '\377'; head -c 15 /dev/zero; printf 'X\001\002\r\377'; head -c 11 /dev/zero; } > "k[rs16].rel"
+    "$CIT" -n xa -T SEQ -w brief.seq -T SEQ -w bin.seq -T SEQ -w z.seq -w "k[rs16].rel" a.d64 > /dev/null
+    mkdir out && cd out || return
+    "$CIT" --lf -XA "*" ../a.d64 > /dev/null 2>&1
+    [ -f brief.seq.txt ] && ok || bad "-XA: text SEQ must become .txt"
+    [ -f bin.seq.seq ] && ok || bad "-XA: binary SEQ must stay .seq"
+    [ -f z.seq.txt ] && ok || bad "-XA: SEQ with \$00 separators is text"
+    [ -f "k[rs16].csv" ] && ok || bad "-XA: REL must become name[rsNN].csv"
+    grep -q '^meier; 1250 ;$' "k[rs16].csv" && ok || bad "-XA: CSV fields"
+    [ "$(sed -n 2p "k[rs16].csv")" = "" ] && ok || bad "-XA: unused record must be an empty line"
+    cd .. || return
+    "$CIT" --convert out b.d64 > /dev/null 2>&1
+    for f in brief.seq bin.seq z.seq k; do
+        a=$("$CIT" --sums a.d64 | grep -A1 "\"$f\"" | grep -o 'crc32 [0-9a-f]*')
+        b=$("$CIT" --sums b.d64 | grep -A1 "\"$f\"" | grep -o 'crc32 [0-9a-f]*')
+        [ -n "$a" ] && [ "$a" = "$b" ] && ok || bad "-XA/--convert round trip of $f"
+    done
+    "$CIT" --sums b.d64 | grep -q "record length 16" && ok || bad "REL record length from [rs16]"
+    for o in '|' '{EOR}' eol; do
+        rm -f z.seq.txt
+        "$CIT" --lf --seq-00 "$o" -XA z.seq a.d64 > /dev/null 2>&1
+        "$CIT" -n z --seq-00 "$o" -w z.seq.txt z.d64 > /dev/null 2>&1
+        a=$("$CIT" --sums a.d64 | grep -A1 '"z.seq"' | grep -o 'crc32 [0-9a-f]*')
+        b=$("$CIT" --sums z.d64 | grep -A1 '"z.seq"' | grep -o 'crc32 [0-9a-f]*')
+        [ -n "$a" ] && [ "$a" = "$b" ] && ok || bad "--seq-00 $o round trip"
+        rm -f z.d64
+    done
+    if "$CIT" --seq-00 a -XA z.seq a.d64 > /dev/null 2>&1; then bad "--seq-00 a must be refused"; else ok; fi
+    printf 'Name;Ort\r\n"a;b";"x ""y"""\r\n;\r\n' > excel.csv
+    "$CIT" -n e -w excel.csv e.d64 > /dev/null 2>&1 && ok || bad "-w excel.csv"
+    "$CIT" --sums e.d64 | grep -q "record length 9" && ok || bad "CSV record length from the longest line"
+    if "$CIT" -n e -w "k[rs3].csv" -w out/../excel.csv f.d64 > /dev/null 2>&1; then bad "a record longer than [rsNN] must be refused"; else ok; fi
+    printf 'M\303\274ller\n' > u.csv
+    if "$CIT" -n u -w u.csv u.d64 > /dev/null 2>&1; then bad "a character without PETSCII must be refused"; else ok; fi
+    if command -v petcat > /dev/null; then
+        printf '10 print"{clr}hallo"\n20 goto 10\n' > h.txt
+        petcat -w2 -o h.prg -- h.txt
+        printf '10 sys2061\n' > s.txt
+        petcat -w2 -o s0.prg -- s.txt
+        cat s0.prg > s.prg; printf '\251\001\140' >> s.prg
+        "$CIT" -n p -w h.prg -w s.prg p.d64 > /dev/null
+        mkdir pout && cd pout || return
+        "$CIT" -XA "*" ../p.d64 > /dev/null 2>err
+        [ -f "h.prg[la0801].bas" ] && ok || bad "-XA: BASIC must become name[la0801].bas"
+        [ -f s.prg.prg ] && grep -q "SYS line" err && ok || bad "-XA: SYS with machine code must stay PRG"
+        cd .. || return
+        "$CIT" --convert pout p2.d64 > /dev/null 2>&1
+        a=$("$CIT" --sums p.d64 | grep -A1 '"h.prg"' | grep -o 'crc32 [0-9a-f]*')
+        b=$("$CIT" --sums p2.d64 | grep -A1 '"h.prg"' | grep -o 'crc32 [0-9a-f]*')
+        [ -n "$a" ] && [ "$a" = "$b" ] && ok || bad "BASIC round trip through petcat"
+    fi
+    cd .. && rm -rf xat
+}
+xa_test
+
 echo "formats: $pass ok, $fail failed"
 [ $fail -eq 0 ]

@@ -139,7 +139,19 @@ usage(void)
     printf("-N            Force creation of a new directory entry, even if a file with the\n");
     printf("              same name exists already.\n");
     printf("-o            Do not overwrite if file with same name exists already.\n");
-    printf("-X filename   Extract file from disk image. Wildcards * and ? are supported.\n\n");
+    printf("-X filename   Extract file from disk image. Wildcards * and ? are supported.\n");
+    printf("-XA filename  Extract with conversion: BASIC as listing (petcat), SEQ as\n");
+    printf("              text, REL as CSV; only where the way back gives the same\n");
+    printf("              bytes, else as -X. -w and --convert take these files back\n");
+    printf("              (-T before -w switches that off).\n");
+    printf("--seq mode    SEQ for -XA: auto (default), raw, ascii, utf8.\n");
+    printf("--seq-00 x    $00 in SEQ text: eol (line end instead of CR) or a text\n");
+    printf("              like \"|\" or \"{EOR}\" (default {0x00}).\n");
+    printf("--rel-00 x    $00 in REL records: sep (field separator instead of CR) or\n");
+    printf("              a text.\n");
+    printf("--csv-sep c   CSV separator, default ; (or tab).\n");
+    printf("--charset cs  lower (default) or upper character set for text.\n");
+    printf("--crlf --lf --cr  Line end of text (default: that of the system).\n\n");
     printf("Track/Sector Control:\n");
     printf("====================\n");
     printf("-S value      Default sector interleave, default=10. Not applicable for D81.\n");
@@ -1713,8 +1725,64 @@ apply_patches(image_type type, unsigned char* image, patch patches[], int num_pa
 }
 
 /* Extract files according to patterns */
+/* writes a file of -X/-XA */
 static void
-extract_files(image_type type, unsigned char* image, char *patterns[], int num_patterns)
+write_extracted(const char *name, const void *data, size_t size)
+{
+    FILE *file = fopen(name, "wb");
+    if (file == NULL || fwrite(data, 1, size, file) != size || fclose(file) != 0) {
+        fprintf(stderr, "\nERROR: Could not write output file %s\n", name);
+        exit(-1);
+    }
+}
+
+/* -XA: the file as text where that works without loss, see textconv.c and
+   basic.c; afilename is the name without extension */
+static void
+extract_converted(const char *afilename, int filetype, int record_length, const unsigned char *data, int size)
+{
+    char name[3 * FILENAMEMAXSIZE + 64];
+    char *text = NULL;
+    size_t len = 0;
+    if (filetype == FILETYPEPRG) {
+        char tags[32];
+        if (basic_to_listing(data, size, afilename, &text, &len, tags, sizeof tags) == 0) {
+            snprintf(name, sizeof name, "%s%s.bas", afilename, tags);
+        } else {
+            snprintf(name, sizeof name, "%s.prg", afilename);
+        }
+    } else if (filetype == FILETYPESEQ) {
+        int share = text_share(data, size);
+        int mode = textopt.seq_mode;
+        if (mode == SEQ_AUTO) {
+            mode = (share >= textopt.seq_mixed) ? SEQ_ASCII : SEQ_RAW;
+            if (mode == SEQ_ASCII && share < textopt.seq_text) {
+                fprintf(stderr, "\nNOTE: %s is %d%% text, written as text with many {0xNN}\n", afilename, share);
+            }
+        }
+        if (mode == SEQ_RAW) {
+            snprintf(name, sizeof name, "%s.seq", afilename);
+        } else {
+            text = seq_to_text(data, size, mode == SEQ_UTF8, &len);
+            snprintf(name, sizeof name, "%s.txt", afilename);
+        }
+    } else if (filetype == FILETYPEREL) {
+        text = rel_to_csv(data, size, record_length, &len);
+        snprintf(name, sizeof name, "%s[rs%d].csv", afilename, record_length);
+    } else {
+        snprintf(name, sizeof name, "%s.%s", afilename, filetypename_lc[filetype & 7]);
+    }
+    printf("\nExtracting %s", name);
+    if (text != NULL) {
+        write_extracted(name, text, len);
+        free(text);
+    } else {
+        write_extracted(name, data, (size_t)size);
+    }
+}
+
+static void
+extract_files(image_type type, unsigned char* image, char *patterns[], const bool *converted, int num_patterns)
 {
     bool found = false;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
@@ -1741,6 +1809,44 @@ extract_files(image_type type, unsigned char* image, char *patterns[], int num_p
                     petscii2ascii(filename, afilename, FILENAMEMAXSIZE, false);
                     int pext = strlen(afilename);
                     filetype &= 7;
+                    if (converted[p]) {
+                        unsigned int track = *(image + dirblock + FILETRACKOFFSET);
+                        int sector = *(image + dirblock + FILESECTOROFFSET);
+                        unsigned int last_track;
+                        int last_sector;
+                        int result = validate_sector_chain(type, image, blockmap, track, sector, &last_track, &last_sector);
+                        if (result == FIRST_BROKEN) {
+                            printf("\nExtracting %s, ERROR: directory entry invalid", afilename);
+                            break;
+                        }
+                        if (result != VALID) {
+                            printf("\nWARNING: %s is corrupt", afilename);
+                        }
+                        unsigned char *data = NULL;
+                        int size = 0;
+                        for (;;) {
+                            unsigned char *block = image + linear_sector(type, track, sector) * BLOCKSIZE;
+                            bool last = (track == last_track && (int)sector == last_sector);
+                            int n = last ? *(block + 1) - 1 : 254;
+                            n = n < 0 ? 0 : n;
+                            unsigned char *d = realloc(data, size + n + 1);
+                            if (d == NULL) {
+                                fprintf(stderr, "ERROR: Memory allocation error\n");
+                                exit(-1);
+                            }
+                            data = d;
+                            memcpy(data + size, block + 2, n);
+                            size += n;
+                            if (last) {
+                                break;
+                            }
+                            track = *block;
+                            sector = *(block + 1);
+                        }
+                        extract_converted(afilename, filetype, image[dirblock + 0x17], data, size);
+                        free(data);
+                        break;
+                    }
                     if (filetype == FILETYPEREL) {
                         /* the record length is part of the file, the side sectors are not */
                         sprintf(afilename + pext, "[rs%d].rel", image[dirblock + 0x17]);
@@ -1795,6 +1901,7 @@ main(int argc, char* argv[])
     memset(patches, 0, sizeof patches);
     int num_patches = 0;
     char *extractions[MAXNUMEXTRACTIONS];
+    bool extract_converted[MAXNUMEXTRACTIONS];  /* -XA */
     memset(extractions, 0, sizeof extractions);
     int num_extractions = 0;
     image_type type = IMAGE_D64;
@@ -1836,6 +1943,7 @@ main(int argc, char* argv[])
         }
     }
     load_config(argv[0], config_path);
+    text_options_init();
 
     unsigned char* header  = (unsigned char*)(config.disk_name != NULL ? config.disk_name : "cit");
     unsigned char* id      = (unsigned char*)"00#a02a";
@@ -2072,6 +2180,8 @@ main(int argc, char* argv[])
             files[num_files].nrSectorsShown = nrSectorsShown;
             files[num_files].filetype = filetype;
             files[num_files].direntryindex = -1;
+            files[num_files].convert_by_name = !filetype_set && strcmp(argv[j], "-w") == 0;
+            files[num_files].name_from_local = (filename == NULL);
 
             if (strcmp(argv[j], "-W") == 0) {
                 if(nrSectorsShown != -1) {
@@ -2323,7 +2433,7 @@ main(int argc, char* argv[])
             patches[num_patches++].filename = argv[j + 1] + numparsed + 1;
             modified = 1;
             j++;
-        } else if (strcmp(argv[j], "-X") == 0) {
+        } else if (strcmp(argv[j], "-X") == 0 || strcmp(argv[j], "-XA") == 0) {
             if(num_extractions >= MAXNUMEXTRACTIONS) {
                 fprintf(stderr, "ERROR: Too many file extraction patterns, maximum supported number is %d\n", MAXNUMPATCHES);
                 return -1;
@@ -2332,8 +2442,36 @@ main(int argc, char* argv[])
                 fprintf(stderr, "ERROR: Error parsing argument for -X\n");
                 return -1;
             }
+            extract_converted[num_extractions] = strcmp(argv[j], "-XA") == 0;
             extractions[num_extractions++] = argv[j + 1];
             j++;
+        } else if (strcmp(argv[j], "--crlf") == 0) {
+            textopt.eol = EOL_CRLF;
+        } else if (strcmp(argv[j], "--lf") == 0) {
+            textopt.eol = EOL_LF;
+        } else if (strcmp(argv[j], "--cr") == 0) {
+            textopt.eol = EOL_CR;
+        } else if (strcmp(argv[j], "--charset") == 0 && j + 1 < argc
+                   && (strcmp(argv[j + 1], "lower") == 0 || strcmp(argv[j + 1], "upper") == 0)) {
+            textopt.upper = strcmp(argv[++j], "upper") == 0;
+        } else if (strcmp(argv[j], "--seq") == 0 && j + 1 < argc) {
+            const char *m = argv[++j];
+            textopt.seq_mode = !strcmp(m, "raw") ? SEQ_RAW : !strcmp(m, "ascii") ? SEQ_ASCII
+                               : !strcmp(m, "utf8") ? SEQ_UTF8 : !strcmp(m, "auto") ? SEQ_AUTO : -1;
+            if (textopt.seq_mode < 0) {
+                fprintf(stderr, "ERROR: --seq takes raw, ascii, utf8 or auto\n");
+                return -1;
+            }
+        } else if (strcmp(argv[j], "--seq-00") == 0 && j + 1 < argc) {
+            textopt.seq00 = argv[++j];
+        } else if (strcmp(argv[j], "--rel-00") == 0 && j + 1 < argc) {
+            textopt.rel00 = argv[++j];
+        } else if (strcmp(argv[j], "--csv-sep") == 0 && j + 1 < argc) {
+            textopt.csv_sep = sep_from_name(argv[++j]);
+            if (textopt.csv_sep == 0) {
+                fprintf(stderr, "ERROR: --csv-sep takes one character or tab\n");
+                return -1;
+            }
         } else if (strcmp(argv[j], "-q") == 0) {
             quiet = 1;
         } else if (strcmp(argv[j], "-v") == 0) {
@@ -2351,6 +2489,57 @@ main(int argc, char* argv[])
         return -1;
     }
     imagepath = argv[argc-1];
+    if (check_zero_text(textopt.seq00, "--seq-00") != 0 || check_zero_text(textopt.rel00, "--rel-00") != 0) {
+        return -1;
+    }
+    /* -w name.txt/.csv/.bas, name[rsNN].rel: converted like --convert does
+       it for a folder, unless -T gave the type */
+    for (int i = 0; i < num_files; i++) {
+        imagefile *fi = &files[i];
+        if (!fi->convert_by_name || fi->alocalname == NULL || fi->has_data) {
+            continue;
+        }
+        const char *local = (const char *)fi->alocalname;
+        const char *base = (const char *)basename((const unsigned char *)local);
+        size_t bl = strlen(base);
+        if (bl < 5 || base[bl - 4] != '.' || (strcasecmp(base + bl - 3, "txt") && strcasecmp(base + bl - 3, "csv")
+                && strcasecmp(base + bl - 3, "bas") && strcasecmp(base + bl - 3, "rel"))) {
+            continue;
+        }
+        FILE *f = fopen(local, "rb");
+        if (f == NULL) {
+            fprintf(stderr, "ERROR: Could not open file \"%s\" for reading\n", local);
+            return -1;
+        }
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        unsigned char *data = malloc(size + 1);
+        if (data == NULL || fread(data, 1, size, f) != (size_t)size) {
+            fprintf(stderr, "ERROR: Could not read %s\n", local);
+            return -1;
+        }
+        fclose(f);
+        char cbmname[3 * FILENAMEMAXSIZE + 16];
+        int t, rl, out_size;
+        unsigned char *out;
+        if (convert_local_file(base, local, data, (int)size, cbmname, sizeof cbmname, &t, &rl, &out, &out_size) < 0) {
+            free(data);
+            return -1;
+        }
+        if (out != data) {
+            free(data);
+        }
+        fi->data = out;
+        fi->data_size = out_size;
+        fi->has_data = true;
+        fi->data_alloc = out;
+        fi->filetype = (fi->filetype & 0xf0) | t;
+        fi->record_length = rl;
+        if (fi->name_from_local) {
+            ascii2petscii((unsigned char *)cbmname, fi->pfilename, FILENAMEMAXSIZE);
+        }
+    }
 
     bool extended = (type == IMAGE_D64_EXTENDED_SPEED_DOS) || (type == IMAGE_D64_EXTENDED_DOLPHIN_DOS);
     if (format_choice >= 0) {
@@ -2674,7 +2863,7 @@ main(int argc, char* argv[])
     }
 
     /* Extract files */
-    extract_files(type, image, extractions, num_extractions);
+    extract_files(type, image, extractions, extract_converted, num_extractions);
 
     /* Looking into the image */
     if (do_sums) {

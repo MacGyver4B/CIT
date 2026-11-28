@@ -142,6 +142,51 @@ entries keep only their directory entry. Not copied, with a warning: GEOS
 files, broken block chains, used blocks that belong to no file, error
 tables.
 
+### Extracting with conversion (`-XA`) ###
+
+`-XA pattern` extracts like `-X`, but as files to read and edit on the PC,
+as far as the way back gives the very same bytes:
+
+| type | `-X` | `-XA` |
+|---|---|---|
+| PRG | `name.prg` | BASIC: listing `name[la0801].bas` through petcat; else `.prg` |
+| SEQ | `name.seq` | text `name.txt` if it is mostly text, else `.seq` |
+| REL | `name[rs64].rel` | CSV `name[rs64].csv`, one line per record |
+| USR | `name.usr` | `name.usr` |
+
+Text: letters, digits, punctuation and space become ASCII (lowercase/
+uppercase character set, `--charset upper` for the other one), CR is the
+line end, every other byte is written as `{0xFF}`. PETSCII has no `{`, so
+nothing gets mixed up.
+
+* BASIC: the version follows from the load address ($0801 C64, $0401 PET,
+  $1C01 C128 ...); petcat must give the same bytes back, else the file
+  stays a PRG with a warning. A SYS line with machine code behind it
+  stays a PRG ("SYS line followed by ... bytes of machine code").
+* SEQ: from 90 % text bytes it is text, from 75 % text with a note, below
+  that it stays `.seq` (`seq.text`, `seq.mixed` in `cit.ini`). Control
+  codes (colours, cursor) do not count as text. `--seq ascii|utf8|raw`
+  decides yourself; utf8 also writes the graphic characters (Unicode
+  "Symbols for Legacy Computing", needs a font like C64 Pro Mono).
+* REL: the fields of a record are split at CR, as `PRINT#` writes them;
+  numbers stay text as they are in the file (` 1250 ` with its spaces).
+  Bytes $00 that the DOS filled in at the end are left out, an unused
+  record is an empty line. Separator `;` (Excel in German), `--csv-sep ,`
+  or `tab`.
+* `$00` as a separator of its own: `--seq-00` / `--rel-00` with `eol`
+  (`sep` for REL: instead of CR, which then becomes `{0x0D}`) or a text
+  like `"|"` or `"{EOR}"`. Use the same option on the way back.
+* Line end: that of the system, `text.eol` in `cit.ini`, `--crlf`, `--lf`,
+  `--cr`.
+
+The way back: `--convert folder image`, or `-w` with these names, turn
+`.bas`, `.txt`, `.csv` and `name[rsNN].rel` into PRG, SEQ and REL files
+again (`-T` before `-w` switches that off and writes the file as it is).
+A CSV without `[rsNN]` gets the record length of its longest line, so a
+table saved from Excel or Access becomes a REL file; a line of nothing
+but separators, as Excel writes it, is an unused record. Characters that
+PETSCII does not have (umlauts) are refused with their line.
+
 ### Directory order (`--dirpos name n`) ###
 
 Swaps the directory entry of a file with entry n; the blocks stay where
@@ -184,11 +229,12 @@ Layout:
 
 ### Planned ###
 
-* `-XA`: extract with conversion (BASIC as text in `petcat` notation,
-  load address as `[la0801]`, only where the way back is lossless)
 * D67 (2040), DNP, CMD containers, error tables, G64/G71/NIB in raw.c
 * Transwarp: `-V`/`--check` message, decoding unencrypted files back to PRG
 * `.zip`/`.7z` archives through 7-Zip
+* PETSCII viewer and converter: screens with colour and cursor codes as
+  ANSI/VT100 for the console, DOS ANSI (`.ans`) or HTML (one way only)
+* CSV and text as UTF-8 with graphic characters for REL as well
 * SD cards and USB sticks: reading a card into an image and writing an
   image back (Windows and Linux, removable drives only, with a question
   before writing and a check after it)
@@ -292,6 +338,13 @@ sd.letter = S                    ; drive letter for --sd-mount (default S)
 alloc.new      = auto            ; strategy for a new image
 alloc.existing = dos             ; strategy when adding files
 disk.name      = cit             ; disk name without -n
+text.eol       = crlf            ; line end of text from -XA (default: system)
+text.charset   = lower           ; lower or upper character set
+csv.sep        = ;               ; CSV separator (or tab)
+seq.text       = 90              ; SEQ is text from this percentage
+seq.mixed      = 75              ; ... text with a note from this one
+; seq.00       = eol             ; $00 in SEQ: eol or a text like | (default {0x00})
+; rel.00       = sep             ; $00 in REL: sep or a text (default {0x00})
 ```
 
 Unknown keys are reported with their line. CIT does not remember paths by

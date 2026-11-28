@@ -168,6 +168,8 @@ typedef struct {
     void                *name_alloc;           /* to free: alocalname, if allocated */
     int                  record_length;        /* REL files: record length (1-254) */
     int                  loop_target;          /* loop file: index + 1 of the file in files[], 0 = by name */
+    bool                 convert_by_name; /* -w without -T: .txt/.csv/.bas/[rsNN].rel converted */
+    bool                 name_from_local; /* no -f: the CBM name comes from the local name */
     /* placement of the file (strategy cc1541) and kind of entry */
     int                  start_sector;         /* -b: first sector of the file */
     bool                 start_sector_set;
@@ -251,6 +253,8 @@ extern int verbose;
 extern int num_files;
 extern int max_hash_length;
 extern int unicode;
+unsigned int petscii_unicode(unsigned char p, bool lower);
+char *utf8_encode(int c, char *out);
 extern int modified;
 extern int dir_error;
 
@@ -312,6 +316,13 @@ typedef struct {
     const char *osfmount;       /* path of OSFMount.com, NULL = default, see
                                    osfmount_path(); for --sd-mount */
     char sd_letter;             /* drive letter for --sd-mount, 0 = S */
+    int text_eol;               /* -1 = of the system, else EOL_* */
+    int text_upper;             /* -1/0 = lowercase/uppercase set, 1 = uppercase/graphics */
+    char csv_sep;               /* 0 = ';' */
+    int seq_text;               /* -1 = 90: from this share a SEQ is text */
+    int seq_mixed;              /* -1 = 75: from this share text with a note */
+    const char *seq00;          /* text for $00 in SEQ, "eol", NULL = {0x00} */
+    const char *rel00;          /* text for $00 in REL, "sep", NULL = {0x00} */
     int alloc_new;              /* strategy for a new image, -1 = built-in */
     int alloc_existing;         /* strategy when adding files, -1 = built-in */
     const char *disk_name;      /* disk name without -n, NULL = "cit" */
@@ -320,6 +331,39 @@ typedef struct {
 extern cit_config config;
 void load_config(const char *program, const char *explicit_path);
 const char *osfmount_path(void);
+int eol_from_name(const char *s);
+char sep_from_name(const char *s);
+
+/* textconv.c: PETSCII files as text (-XA) */
+enum { EOL_CRLF, EOL_LF, EOL_CR };
+enum { SEQ_AUTO, SEQ_RAW, SEQ_ASCII, SEQ_UTF8 };
+typedef struct {
+    int eol;                    /* EOL_* */
+    bool upper;                 /* uppercase/graphics character set */
+    int seq_mode;               /* SEQ_* */
+    char csv_sep;
+    int seq_text;               /* percent */
+    int seq_mixed;              /* percent */
+    const char *seq00;          /* NULL, "eol" or a text */
+    const char *rel00;          /* NULL, "sep" or a text */
+} text_options;
+extern text_options textopt;
+void text_options_init(void);
+int check_zero_text(const char *rep, const char *option);
+int text_share(const unsigned char *data, int size);
+char *seq_to_text(const unsigned char *data, int size, bool utf8, size_t *len);
+int text_to_seq(const char *text, size_t len, const char *what, unsigned char **data, int *size);
+char *rel_to_csv(const unsigned char *data, int size, int record_length, size_t *len);
+int csv_to_rel(const char *text, size_t len, const char *what, int *record_length, unsigned char **data, int *size);
+
+int convert_local_file(const char *fname, const char *path, unsigned char *data, int size, char *cbmname,
+                       size_t cbmsize, int *filetype, int *record_length, unsigned char **out, int *out_size);
+
+/* basic.c: BASIC programs as listings through petcat */
+int basic_to_listing(const unsigned char *data, int size, const char *cbmname, char **text, size_t *len,
+                     char *tags, size_t tags_size);
+int listing_to_basic(const char *text, size_t len, unsigned int load_address, const char *version,
+                     const char *what, unsigned char **data, int *size);
 
 /* tools.c: looking into images */
 unsigned long crc32_of(const unsigned char *data, int size);

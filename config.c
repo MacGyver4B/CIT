@@ -16,6 +16,13 @@
  *   osfmount       = path of OSFMount.com, for --sd-mount (Windows);
  *                    default C:\Program Files\OSFMount\OSFMount.com, else PATH
  *   sd.letter      = drive letter for --sd-mount (default S)
+ *   text.eol       = crlf | lf | cr        line end of text from -XA (default: system)
+ *   text.charset   = lower | upper         character set of text (default lower)
+ *   csv.sep        = ; | , | tab           CSV separator (default ;)
+ *   seq.text       = percent               SEQ is text from this share (default 90)
+ *   seq.mixed      = percent               text with a note from this share (default 75)
+ *   seq.00         = eol | text            $00 in SEQ: line end or this text
+ *   rel.00         = sep | text            $00 in REL: field separator or this text
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files
  *   disk.name      = disk name without -n
@@ -25,7 +32,7 @@
 
 #include "cit.h"
 
-cit_config config = { .petcat = NULL, .sevenzip = NULL, .osfmount = NULL, .sd_letter = 0, .alloc_new = -1, .alloc_existing = -1, .disk_name = NULL, .path = NULL };
+cit_config config = { .petcat = NULL, .sevenzip = NULL, .osfmount = NULL, .sd_letter = 0, .text_eol = -1, .text_upper = -1, .csv_sep = 0, .seq_text = -1, .seq_mixed = -1, .seq00 = NULL, .rel00 = NULL, .alloc_new = -1, .alloc_existing = -1, .disk_name = NULL, .path = NULL };
 
 static char *
 copy_string(const char *s)
@@ -100,6 +107,40 @@ read_config(const char *path)
             config.sevenzip = copy_string(value);
         } else if (strcasecmp(key, "osfmount") == 0) {
             config.osfmount = copy_string(value);
+        } else if (strcasecmp(key, "text.eol") == 0) {
+            int e = eol_from_name(value);
+            if (e < 0) {
+                fprintf(stderr, "WARNING: %s line %d: text.eol must be crlf, lf or cr\n", path, number);
+            } else {
+                config.text_eol = e;
+            }
+        } else if (strcasecmp(key, "text.charset") == 0) {
+            if (strcasecmp(value, "lower") == 0 || strcasecmp(value, "upper") == 0) {
+                config.text_upper = strcasecmp(value, "upper") == 0;
+            } else {
+                fprintf(stderr, "WARNING: %s line %d: text.charset must be lower or upper\n", path, number);
+            }
+        } else if (strcasecmp(key, "csv.sep") == 0) {
+            char c = sep_from_name(value);
+            if (c == 0) {
+                fprintf(stderr, "WARNING: %s line %d: csv.sep must be one character or tab\n", path, number);
+            } else {
+                config.csv_sep = c;
+            }
+        } else if (strcasecmp(key, "seq.text") == 0 || strcasecmp(key, "seq.mixed") == 0) {
+            char *end;
+            long v = strtol(value, &end, 10);
+            if (end == value || *end != 0 || v < 0 || v > 100) {
+                fprintf(stderr, "WARNING: %s line %d: %s must be a percentage 0-100\n", path, number, key);
+            } else if (strcasecmp(key, "seq.text") == 0) {
+                config.seq_text = (int)v;
+            } else {
+                config.seq_mixed = (int)v;
+            }
+        } else if (strcasecmp(key, "seq.00") == 0) {
+            config.seq00 = copy_string(value);
+        } else if (strcasecmp(key, "rel.00") == 0) {
+            config.rel00 = copy_string(value);
         } else if (strcasecmp(key, "sd.letter") == 0) {
             char c = (char)toupper((unsigned char)value[0]);
             if (c >= 'A' && c <= 'Z' && (value[1] == 0 || (value[1] == ':' && value[2] == 0))) {
@@ -199,4 +240,25 @@ osfmount_path(void)
     }
 #endif
     return "OSFMount.com";
+}
+
+/* "crlf", "lf", "cr" -> EOL_*, -1 if unknown */
+int
+eol_from_name(const char *s)
+{
+    return strcasecmp(s, "crlf") == 0 ? EOL_CRLF : strcasecmp(s, "lf") == 0 ? EOL_LF
+           : strcasecmp(s, "cr") == 0 ? EOL_CR : -1;
+}
+
+/* CSV separator: one character or "tab", 0 if invalid */
+char
+sep_from_name(const char *s)
+{
+    if (strcasecmp(s, "tab") == 0) {
+        return '\t';
+    }
+    if (s[0] != 0 && s[1] == 0 && s[0] != '"' && s[0] != '{' && s[0] != '\r' && s[0] != '\n') {
+        return s[0];
+    }
+    return 0;
 }

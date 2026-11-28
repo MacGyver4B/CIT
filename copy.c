@@ -418,6 +418,100 @@ write_directory_pet(image_type type, const unsigned char *image, const char *fol
     free(path);
 }
 
+/* trailing tags of a file name: [rs64], [la0801], [b40]; removes them */
+static void
+take_tags(char *name, int *rs, int *la, char *version, size_t vsize)
+{
+    for (;;) {
+        size_t l = strlen(name);
+        if (l < 3 || name[l - 1] != ']') {
+            return;
+        }
+        char *open = strrchr(name, '[');
+        if (open == NULL) {
+            return;
+        }
+        int v;
+        char close;
+        if (sscanf(open, "[rs%d%c", &v, &close) == 2 && close == ']') {
+            *rs = v;
+        } else if (sscanf(open, "[la%x%c", (unsigned int *)&v, &close) == 2 && close == ']') {
+            *la = v;
+        } else if (open[1] == 'b' && strlen(open) - 3 < vsize) {
+            snprintf(version, vsize, "%.*s", (int)(strlen(open) - 3), open + 2);
+        } else {
+            return;
+        }
+        *open = 0;
+    }
+}
+
+/* a local file as CIT writes it, by its name:
+     name.prg .seq .usr      as they are
+     name[rsNN].rel          REL with that record length
+     name.txt                SEQ from text (textconv.c)
+     name[rsNN].csv          REL from CSV, without [rsNN] the longest line
+     name[la0801][bNN].bas   BASIC from a listing (petcat)
+   cbmname gets the name without extension and tags. Returns 0, 1 for an
+   unknown extension (cbmname = whole name, PRG as it is), -1 on error.
+   *out is data itself or a new buffer */
+int
+convert_local_file(const char *fname, const char *path, unsigned char *data, int size, char *cbmname,
+                   size_t cbmsize, int *filetype, int *record_length, unsigned char **out, int *out_size)
+{
+    snprintf(cbmname, cbmsize, "%s", fname);
+    *filetype = FILETYPEPRG;
+    *record_length = 0;
+    *out = data;
+    *out_size = size;
+    size_t l = strlen(cbmname);
+    if (l < 5 || cbmname[l - 4] != '.') {
+        return 1;
+    }
+    char ext[4];
+    snprintf(ext, sizeof ext, "%s", cbmname + l - 3);
+    for (int i = 0; i < 3; i++) {
+        ext[i] = (char)tolower((unsigned char)ext[i]);
+    }
+    if (strcmp(ext, "prg") && strcmp(ext, "seq") && strcmp(ext, "usr") && strcmp(ext, "rel")
+            && strcmp(ext, "txt") && strcmp(ext, "csv") && strcmp(ext, "bas")) {
+        return 1;
+    }
+    cbmname[l - 4] = 0;
+    int rs = 0;
+    int la = -1;
+    char version[8] = "";
+    if (!strcmp(ext, "rel") || !strcmp(ext, "csv") || !strcmp(ext, "bas")) {
+        take_tags(cbmname, &rs, &la, version, sizeof version);
+    }
+    if (!strcmp(ext, "prg") || !strcmp(ext, "usr") || !strcmp(ext, "seq")) {
+        *filetype = !strcmp(ext, "prg") ? FILETYPEPRG : !strcmp(ext, "usr") ? FILETYPEUSR : FILETYPESEQ;
+        return 0;
+    }
+    if (rs < 0 || rs > 254 || (!strcmp(ext, "rel") && rs == 0)) {
+        fprintf(stderr, "ERROR: %s needs a record length [rsNN] of 1-254\n", path);
+        return -1;
+    }
+    if (!strcmp(ext, "rel")) {
+        *filetype = FILETYPEREL;
+        *record_length = rs;
+        return 0;
+    }
+    if (!strcmp(ext, "txt")) {
+        *filetype = FILETYPESEQ;
+        return text_to_seq((const char *)data, (size_t)size, path, out, out_size);
+    }
+    if (!strcmp(ext, "csv")) {
+        *filetype = FILETYPEREL;
+        *record_length = rs;
+        return csv_to_rel((const char *)data, (size_t)size, path, record_length, out, out_size);
+    }
+    /* .bas */
+    *filetype = FILETYPEPRG;
+    return listing_to_basic((const char *)data, (size_t)size, la >= 0 ? (unsigned int)la : 0x0801,
+                            version[0] ? version : NULL, path, out, out_size);
+}
+
 int
 unpack_to_folder(image_type type, const unsigned char *image, const char *folder)
 {
@@ -588,44 +682,32 @@ add_files_from_folder(const char *folder, imagefile *files, int *num_files,
                 fi->record_length = 0;
             }
         } else {
-            /* plain files as -X writes them: name.prg/.seq/.usr, name[rsNN].rel;
-               anything else is a PRG with the whole file name */
+            /* plain files as -X and -XA write them (name.prg/.seq/.usr,
+               name[rsNN].rel, .bas/.txt/.csv); anything else is a PRG with
+               the whole file name */
             char cbmname[3 * FILENAMEMAXSIZE + 16];
-            snprintf(cbmname, sizeof cbmname, "%s", names[i]);
-            int t = FILETYPEPRG;
-            size_t l = strlen(cbmname);
-            if (l > 4 && cbmname[l - 4] == '.') {
-                const char *e = cbmname + l - 3;
-                if (strcasecmp(e, "prg") == 0) {
-                    t = FILETYPEPRG;
-                    cbmname[l - 4] = 0;
-                } else if (strcasecmp(e, "seq") == 0) {
-                    t = FILETYPESEQ;
-                    cbmname[l - 4] = 0;
-                } else if (strcasecmp(e, "usr") == 0) {
-                    t = FILETYPEUSR;
-                    cbmname[l - 4] = 0;
-                } else if (strcasecmp(e, "rel") == 0) {
-                    cbmname[l - 4] = 0;
-                    char *rs = strrchr(cbmname, '[');
-                    int rl = 0;
-                    char close = 0;
-                    if (rs == NULL || sscanf(rs, "[rs%d%c", &rl, &close) != 2 || close != ']'
-                            || rs[strlen(rs) - 1] != ']' || rl < 1 || rl > 254) {
-                        fprintf(stderr, "WARNING: %s has no record length [rsNN] and is not copied\n", names[i]);
-                        free(data);
-                        free(path);
-                        continue;
-                    }
-                    *rs = 0;
-                    t = FILETYPEREL;
-                    fi->record_length = rl;
-                }
+            int t;
+            int rl;
+            unsigned char *conv;
+            int conv_size;
+            int c = convert_local_file(names[i], path, data, (int)st.st_size, cbmname, sizeof cbmname, &t, &rl,
+                                       &conv, &conv_size);
+            if (c < 0) {
+                fprintf(stderr, "WARNING: %s is not copied\n", names[i]);
+                free(data);
+                free(path);
+                free(names[i]);
+                continue;
+            }
+            if (conv != data) {
+                free(data);
+                data = conv;
             }
             ascii2petscii((unsigned char *)cbmname, fi->pfilename, FILENAMEMAXSIZE);
             fi->filetype = 0x80 | t;
+            fi->record_length = rl;
             fi->data = data;
-            fi->data_size = (int)st.st_size;
+            fi->data_size = conv_size;
         }
         fi->alocalname = (unsigned char *)path;
         fi->has_data = true;

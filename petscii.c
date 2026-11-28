@@ -274,6 +274,14 @@ evalhexescape(const unsigned char* ascii, unsigned char* petscii, int len, unsig
     }
 }
 
+/* Unicode of a PETSCII byte in the uppercase/graphics or the lowercase
+   character set (for the text conversions of -XA) */
+unsigned int
+petscii_unicode(unsigned char p, bool lower)
+{
+    return lower ? p2u_lowercase_tab[p] : p2u_uppercase_tab[p];
+}
+
 /* Converts a unicode character to utf8 */
 char* utf8_encode(int c, char* out)
 {
