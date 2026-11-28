@@ -309,6 +309,8 @@ typedef struct {
     const char *petcat;         /* path of petcat, NULL = search PATH */
     const char *sevenzip;       /* path of 7-Zip (7z, 7za, 7zz), NULL = search PATH;
                                    for reading and writing .zip/.7z (planned) */
+    const char *osfmount;       /* path of OSFMount.com, NULL = search PATH;
+                                   for mounting SD images on Windows (planned) */
     int alloc_new;              /* strategy for a new image, -1 = built-in */
     int alloc_existing;         /* strategy when adding files, -1 = built-in */
     const char *disk_name;      /* disk name without -n, NULL = "cit" */

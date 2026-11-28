@@ -13,6 +13,7 @@
  *
  *   petcat         = path of petcat (VICE), for -XA
  *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
+ *   osfmount       = path of OSFMount.com, for mounting SD images on Windows (planned)
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files
  *   disk.name      = disk name without -n
@@ -22,7 +23,7 @@
 
 #include "cit.h"
 
-cit_config config = { NULL, NULL, -1, -1, NULL, NULL };
+cit_config config = { .petcat = NULL, .sevenzip = NULL, .osfmount = NULL, .alloc_new = -1, .alloc_existing = -1, .disk_name = NULL, .path = NULL };
 
 static char *
 copy_string(const char *s)
@@ -95,6 +96,8 @@ read_config(const char *path)
             config.petcat = copy_string(value);
         } else if (strcasecmp(key, "7z") == 0) {
             config.sevenzip = copy_string(value);
+        } else if (strcasecmp(key, "osfmount") == 0) {
+            config.osfmount = copy_string(value);
         } else if (strcasecmp(key, "alloc.new") == 0 || strcasecmp(key, "alloc.existing") == 0) {
             int a = alloc_from_name(value);
             if (a < 0) {
