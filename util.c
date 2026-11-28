@@ -2,14 +2,13 @@
  * util.c - small helpers used by several modules
  *
  *   read_whole_file()   a file into memory, always with a 0 byte behind it
- *   run_program()       an external program (petcat, OSFMount), waits for it
- *   temp_file_name()    a new empty temporary file
+ *   run_program()       an external program (OSFMount), waits for it
  *
  * SPDX-License-Identifier: MIT (same terms as cc1541, see LICENSE)
  */
 
 #ifndef _WIN32
-#define _POSIX_C_SOURCE 200809L   /* posix_spawnp, mkstemp */
+#define _POSIX_C_SOURCE 200809L   /* posix_spawnp */
 #endif
 
 #include "cit.h"
@@ -128,27 +127,5 @@ run_program(const char *prog, const char *const args[], bool quiet)
         return -1;
     }
     return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? 0 : 1;
-#endif
-}
-
-/* a new empty temporary file; 0 = ok */
-int
-temp_file_name(char *name, size_t size)
-{
-#ifdef _WIN32
-    char dir[MAX_PATH];
-    if (size < MAX_PATH || GetTempPathA(sizeof dir, dir) == 0 || GetTempFileNameA(dir, "cit", 0, name) == 0) {
-        return -1;
-    }
-    return 0;
-#else
-    const char *dir = getenv("TMPDIR");
-    snprintf(name, size, "%s/citXXXXXX", (dir != NULL && dir[0]) ? dir : "/tmp");
-    int fd = mkstemp(name);
-    if (fd < 0) {
-        return -1;
-    }
-    close(fd);
-    return 0;
 #endif
 }

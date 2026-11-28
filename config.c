@@ -11,7 +11,7 @@
  * Format: "key = value" per line, comments start with ; or #. The command
  * line always wins over the file, the file over the built-in defaults.
  *
- *   petcat         = path of petcat (VICE), for -XA
+ *   basic.tokens   = file with more BASIC versions (see token.c)
  *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
  *   osfmount       = path of OSFMount.com, for --sd-mount (Windows);
  *                    default C:\Program Files\OSFMount\OSFMount.com, else PATH
@@ -102,7 +102,9 @@ read_config(const char *path)
             *e = 0;
         }
         if (strcasecmp(key, "petcat") == 0) {
-            config.petcat = copy_string(value);
+            config.petcat = copy_string(value);     /* no longer needed, -XA lists BASIC itself */
+        } else if (strcasecmp(key, "basic.tokens") == 0) {
+            load_token_file(value);
         } else if (strcasecmp(key, "7z") == 0) {
             config.sevenzip = copy_string(value);
         } else if (strcasecmp(key, "osfmount") == 0) {

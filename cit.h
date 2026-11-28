@@ -364,7 +364,16 @@ int convert_local_file(const char *fname, const char *path, unsigned char *data,
 /* util.c */
 int read_whole_file(const char *path, unsigned char **data, long *size);
 int run_program(const char *prog, const char *const args[], bool quiet);
-int temp_file_name(char *name, size_t size);
+
+/* token.c: BASIC listings */
+char *basic_list(const unsigned char *d, int size, const char *version, int *used);
+int basic_crunch(const char *text, size_t len, unsigned int la, const char *version, const char *what,
+                 unsigned char **data, int *size);
+int basic_versions_for(unsigned int la, const char **ids, int max);
+bool basic_knows_all(const unsigned char *d, int used, const char *version);
+void basic_print_versions(void);
+int load_token_file(const char *path);
+int basic_main(int argc, char **argv);
 
 /* basic.c: BASIC programs as listings through petcat */
 int basic_to_listing(const unsigned char *data, int size, const char *cbmname, char **text, size_t *len,

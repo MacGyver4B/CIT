@@ -1741,6 +1741,11 @@ main(int argc, char* argv[])
     char* imagepath = NULL;
     char* filename_g64 = NULL;
 
+    /* cit --basic ...: BASIC listings (token.c) */
+    if (argc >= 2 && strcmp(argv[1], "--basic") == 0) {
+        return basic_main(argc, argv);
+    }
+
     /* cit --sd-...: images of SD cards and USB sticks */
     if (argc >= 2 && strncmp(argv[1], "--sd-", 5) == 0) {
         return sd_main(argc, argv);

@@ -149,7 +149,7 @@ as far as the way back gives the very same bytes:
 
 | type | `-X` | `-XA` |
 |---|---|---|
-| PRG | `name.prg` | BASIC: listing `name[la0801].bas` through petcat; else `.prg` |
+| PRG | `name.prg` | BASIC: listing `name[la0801].bas`; else `.prg` |
 | SEQ | `name.seq` | text `name.txt` if it is mostly text, else `.seq` |
 | REL | `name[rs64].rel` | CSV `name[rs64].csv`, one line per record |
 | USR | `name.usr` | `name.usr` |
@@ -159,10 +159,14 @@ uppercase character set, `--charset upper` for the other one), CR is the
 line end, every other byte is written as `{0xFF}`. PETSCII has no `{`, so
 nothing gets mixed up.
 
-* BASIC: the version follows from the load address ($0801 C64, $0401 PET,
-  $1C01 C128 ...); petcat must give the same bytes back, else the file
-  stays a PRG with a warning. A SYS line with machine code behind it
-  stays a PRG ("SYS line followed by ... bytes of machine code").
+* BASIC: CIT lists and tokenizes itself (token.c), in the notation of
+  petcat (VICE), so listings of both tools can be read by both. The
+  version follows from the load address and the tokens used ($0801 C64,
+  $0401 PET, $1C01 C128 ...); another one than the first try goes into
+  the name, e.g. `[blre4]`. The listing must give the same bytes back,
+  else the file stays a PRG with a warning. A SYS line with machine code
+  behind it stays a PRG ("SYS line followed by ... bytes of machine
+  code"); machine code inside REM lines is kept as `{$xx}`.
 * SEQ: from 90 % text bytes it is text, from 75 % text with a note, below
   that it stays `.seq` (`seq.text`, `seq.mixed` in `cit.ini`). Control
   codes (colours, cursor) do not count as text. `--seq ascii|utf8|raw`
@@ -276,6 +280,37 @@ do, cit stops after them.
 * `--json` - format, header, blocks free, every entry (type, flags, size,
   crc32, blocks) and free blocks per track, for scripts or a GUI
 
+### BASIC listings (`--basic`) ###
+
+A replacement for petcat, the same code as `-XA` uses:
+
+```
+cit --basic list prog.prg [version]             listing to stdout
+cit --basic crunch prog.bas out.prg [0801] [version]
+cit --basic versions
+```
+
+Versions: `1p` (PET BASIC 1), `2` (C64, VIC-20, PET), `40` (PET BASIC 4),
+`3` (C16, plus/4), `70`/`71` (C128), `lre2`/`lre4` (PET 2001 LRE: BASIC
+2 or 4 with the graphics BASIC tokens $DB-$F2: init, map, pspace, plot,
+dplot, chplot, chrori, chrsiz, lintyp, cscr, display, idplot, iplot,
+cursor, mode, hcopy, tstp, tstb, icrcl, arcus, font, gfxbasic, caps,
+drive). Without a version `list` takes the one that fits the load address
+and knows every token. Checked against petcat with thousands of random
+programs: the same bytes, the same listing. Differences on purpose: bytes
+outside strings that would turn into a keyword when read back, and spaces
+at the end of a line, are written as `{$xx}`, so nothing gets lost;
+BASIC 7.0 has no BASIC 10 keywords behind SLOW, BASIC 1 has no GO.
+
+More versions come from a file, `basic.tokens = file` in `cit.ini`:
+
+```
+[simons]          ; id, as [bsimons] in file names
+base = 2          ; a built-in version to start from
+load = 0801       ; load address it is tried for (optional)
+cc = fred         ; token = keyword
+```
+
 ### Images of SD cards and USB sticks ###
 
 Images of FAT file systems up to 32 GB, as SD2IEC, petSD, Kung Fu Flash or
@@ -350,7 +385,7 @@ file found is used: `--config file`, `cit.ini` next to the program
 
 ```
 ; tools
-petcat = C:\VICE\bin\petcat.exe   ; for -XA, else searched in PATH
+basic.tokens = C:\CBM\tokens.txt   ; more BASIC versions (--basic, -XA)
 7z     = C:\Program Files\7-Zip\7z.exe   ; for .zip/.7z archives (planned)
 osfmount = C:\Program Files\OSFMount\OSFMount.com   ; for --sd-mount;
                  ; this is the default, else searched in PATH

@@ -359,22 +359,34 @@ xa_test() {
     if "$CIT" -n c -w cut.txt c.d64 > /dev/null 2>&1; then bad "an escape cut off at the end must be refused"; else ok; fi
     printf 'M\303\274ller\n' > u.csv
     if "$CIT" -n u -w u.csv u.d64 > /dev/null 2>&1; then bad "a character without PETSCII must be refused"; else ok; fi
+    # BASIC: own tokenizer (token.c), no petcat needed
+    printf '10 print"{clr}hallo"\n20 goto 10\n' > h.txt
+    "$CIT" --basic crunch h.txt h.prg 0801 > /dev/null
+    printf '10 sys2061\n' > s.txt
+    "$CIT" --basic crunch s.txt s0.prg 0801 > /dev/null
+    cat s0.prg > s.prg; printf '\251\001\140' >> s.prg
+    # PET 2001 LRE: graphics BASIC tokens on BASIC 4
+    printf '10 init:map(0,319,0,199):plot(10,20,1):dopen#1,"x"\n' > g.txt
+    "$CIT" --basic crunch g.txt g.prg 0401 lre4 > /dev/null
+    # machine code in a REM line, every byte 1-255, spaces at the end
+    python3 -c "import sys; b=bytes(range(1,256))+b'  '; l=bytes([0x10,0x08,0x0a,0x00,0x8f])+b+b'\0'; n=0x0801+len(l); l=bytes([n&255,n>>8])+l[2:]; sys.stdout.buffer.write(bytes([1,8])+l+b'\0\0')" > r.prg 2> /dev/null || cp h.prg r.prg
+    "$CIT" -n p -w h.prg -w s.prg -w g.prg -w r.prg p.d64 > /dev/null
+    mkdir pout && cd pout || return
+    "$CIT" -XA "*" ../p.d64 > /dev/null 2>err
+    [ -f "h.prg[la0801].bas" ] && ok || bad "-XA: BASIC must become name[la0801].bas"
+    [ -f s.prg.prg ] && grep -q "SYS line" err && ok || bad "-XA: SYS with machine code must stay PRG"
+    [ -f "g.prg[la0401][blre4].bas" ] && grep -q "map(0,319,0,199):plot" "g.prg[la0401][blre4].bas" && ok || bad "-XA: LRE 4 listing"
+    [ -f "r.prg[la0801].bas" ] && ok || bad "-XA: REM with machine code"
+    cd .. || return
+    "$CIT" --convert pout p2.d64 > /dev/null 2>&1
+    for f in h.prg g.prg r.prg; do
+        a=$("$CIT" --sums p.d64 | grep -A1 "\"$f\"" | grep -o 'crc32 [0-9a-f]*')
+        b=$("$CIT" --sums p2.d64 | grep -A1 "\"$f\"" | grep -o 'crc32 [0-9a-f]*')
+        [ -n "$a" ] && [ "$a" = "$b" ] && ok || bad "BASIC round trip of $f"
+    done
     if command -v petcat > /dev/null; then
-        printf '10 print"{clr}hallo"\n20 goto 10\n' > h.txt
-        petcat -w2 -o h.prg -- h.txt
-        printf '10 sys2061\n' > s.txt
-        petcat -w2 -o s0.prg -- s.txt
-        cat s0.prg > s.prg; printf '\251\001\140' >> s.prg
-        "$CIT" -n p -w h.prg -w s.prg p.d64 > /dev/null
-        mkdir pout && cd pout || return
-        "$CIT" -XA "*" ../p.d64 > /dev/null 2>err
-        [ -f "h.prg[la0801].bas" ] && ok || bad "-XA: BASIC must become name[la0801].bas"
-        [ -f s.prg.prg ] && grep -q "SYS line" err && ok || bad "-XA: SYS with machine code must stay PRG"
-        cd .. || return
-        "$CIT" --convert pout p2.d64 > /dev/null 2>&1
-        a=$("$CIT" --sums p.d64 | grep -A1 '"h.prg"' | grep -o 'crc32 [0-9a-f]*')
-        b=$("$CIT" --sums p2.d64 | grep -A1 '"h.prg"' | grep -o 'crc32 [0-9a-f]*')
-        [ -n "$a" ] && [ "$a" = "$b" ] && ok || bad "BASIC round trip through petcat"
+        petcat -w2 -o hp.prg -- h.txt
+        cmp -s h.prg hp.prg && ok || bad "the tokenizer must give the same bytes as petcat"
     fi
     cd .. && rm -rf xat
 }
