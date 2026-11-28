@@ -310,7 +310,7 @@ typedef struct {
     const char *sevenzip;       /* path of 7-Zip (7z, 7za, 7zz), NULL = search PATH;
                                    for reading and writing .zip/.7z (planned) */
     const char *osfmount;       /* path of OSFMount.com, NULL = default, see
-                                   osfmount_path(); for mounting SD images (planned) */
+                                   osfmount_path(); for --sd-mount */
     int alloc_new;              /* strategy for a new image, -1 = built-in */
     int alloc_existing;         /* strategy when adding files, -1 = built-in */
     const char *disk_name;      /* disk name without -n, NULL = "cit" */

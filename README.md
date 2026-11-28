@@ -255,9 +255,22 @@ as `64M` or `2G`. Images with a partition table are read and changed too
 (the first partition). Names may be long and hold umlauts.
 
 Windows cannot mount such an image by itself (only CD images); OSFMount
-(PassMark, free) can: choose "Disk" instead of a RAM drive and switch off
-"read-only", or the changes only stay in its cache. A mounted image appears
-as a removable drive, which is why no partition table is needed.
+(PassMark, free) can, and cit calls it:
+
+```
+cit --sd-mount   card.img        first free drive letter, read/write
+cit --sd-mount   card.img J:     this one
+cit --sd-unmount J:
+```
+
+This runs `OSFMount.com -a -t file -f card.img -m J: -o rw,rem,logical`: a
+removable drive, which is why Windows takes FAT without partition table
+(an image with partition table is mounted with `-v 1`). OSFMount needs
+administrator rights. Its path comes from `osfmount` in `cit.ini`, else
+`C:\Program Files\OSFMount\OSFMount.com`, else PATH. Do not change a
+mounted image with `--sd-put` and the like: two writers break the file
+system. In the OSFMount window choose "Disk" instead of a RAM drive and
+switch off "read-only", or the changes only stay in its cache.
 
 ### Settings (`cit.ini`) ###
 
@@ -270,7 +283,7 @@ file found is used: `--config file`, `cit.ini` next to the program
 ; tools
 petcat = C:\VICE\bin\petcat.exe   ; for -XA, else searched in PATH
 7z     = C:\Program Files\7-Zip\7z.exe   ; for .zip/.7z archives (planned)
-osfmount = C:\Program Files\OSFMount\OSFMount.com   ; mounting SD images (planned);
+osfmount = C:\Program Files\OSFMount\OSFMount.com   ; for --sd-mount;
                  ; this is the default, else searched in PATH
 
 ; defaults

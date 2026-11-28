@@ -13,7 +13,7 @@
  *
  *   petcat         = path of petcat (VICE), for -XA
  *   7z             = path of 7-Zip (7z, 7za, 7zz), for .zip/.7z archives (planned)
- *   osfmount       = path of OSFMount.com, for mounting SD images on Windows (planned);
+ *   osfmount       = path of OSFMount.com, for --sd-mount (Windows);
  *                    default C:\Program Files\OSFMount\OSFMount.com, else PATH
  *   alloc.new      = cc1541 | dos | auto   strategy for a new image
  *   alloc.existing = cc1541 | dos | auto   strategy when adding files

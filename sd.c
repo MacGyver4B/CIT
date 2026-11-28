@@ -8,6 +8,8 @@
  *   cit --sd-get   image [--to folder] path...   copy files/folders out
  *   cit --sd-del   image path...        delete files and empty folders
  *   cit --sd-mkdir image folder...      create folders
+ *   cit --sd-mount image [X:]           mount on Windows (OSFMount)
+ *   cit --sd-unmount X:                 dismount it again
  *
  * The file system is handled by FatFs (fatfs/, see fatfs/LICENSE.txt), so
  * nothing has to be mounted and no administrator rights are needed. New
@@ -666,6 +668,109 @@ get_path(const char *src, const char *folder, int *count)
     return ret;
 }
 
+/* --sd-mount / --sd-unmount: OSFMount.com does it (Windows only) */
+#ifdef _WIN32
+static int
+run_osfmount(const char *args)
+{
+    char cmd[4096];
+    snprintf(cmd, sizeof cmd, "\"%s\" %s", osfmount_path(), args);
+    STARTUPINFOA si;
+    PROCESS_INFORMATION pi;
+    memset(&si, 0, sizeof si);
+    si.cb = sizeof si;
+    if (!CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+        fprintf(stderr, "ERROR: Could not start %s (set osfmount in cit.ini)\n", osfmount_path());
+        return -1;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return code == 0 ? 0 : -1;
+}
+
+/* "J:", "j", "J:\" -> 'J', 0 if it is no drive letter */
+static char
+drive_letter(const char *s)
+{
+    char c = (char)toupper((unsigned char)s[0]);
+    if (c < 'A' || c > 'Z' || (s[1] != 0 && s[1] != ':')) {
+        return 0;
+    }
+    return c;
+}
+
+static int
+sd_mount(const char *image, const char *letter_text)
+{
+    /* a partition table needs the first partition, else the whole image
+       as a removable drive (FAT without partition table) */
+    if (sd_open(image, false) != 0) {
+        return -1;
+    }
+    bool partitioned = sd_fs.volbase != 0;
+    sd_close();
+    char full[MAX_PATH];
+    if (_fullpath(full, image, sizeof full) == NULL) {
+        fprintf(stderr, "ERROR: %s not found\n", image);
+        return -1;
+    }
+    DWORD used = GetLogicalDrives();
+    char letter = 0;
+    if (letter_text != NULL) {
+        letter = drive_letter(letter_text);
+        if (letter == 0) {
+            fprintf(stderr, "ERROR: %s is no drive letter\n", letter_text);
+            return -1;
+        }
+        if (used & (1UL << (letter - 'A'))) {
+            fprintf(stderr, "ERROR: %c: is in use\n", letter);
+            return -1;
+        }
+    } else {
+        for (char c = 'D'; c <= 'Z'; c++) {
+            if (!(used & (1UL << (c - 'A')))) {
+                letter = c;
+                break;
+            }
+        }
+        if (letter == 0) {
+            fprintf(stderr, "ERROR: No free drive letter\n");
+            return -1;
+        }
+    }
+    char args[MAX_PATH + 128];
+    snprintf(args, sizeof args, "-a -t file -f \"%s\" -m %c: -o rw,%s", full, letter,
+             partitioned ? "logical -v 1" : "rem,logical");
+    if (run_osfmount(args) != 0 || !(GetLogicalDrives() & (1UL << (letter - 'A')))) {
+        fprintf(stderr, "ERROR: OSFMount could not mount %s (it needs administrator rights)\n", image);
+        return -1;
+    }
+    printf("%s mounted as %c: (read/write); cit --sd-unmount %c: when done\n", image, letter, letter);
+    return 0;
+}
+
+static int
+sd_unmount(const char *letter_text)
+{
+    char letter = drive_letter(letter_text);
+    if (letter == 0) {
+        fprintf(stderr, "ERROR: %s is no drive letter\n", letter_text);
+        return -1;
+    }
+    char args[32];
+    snprintf(args, sizeof args, "-d -m %c:", letter);
+    if (run_osfmount(args) != 0) {
+        fprintf(stderr, "ERROR: OSFMount could not dismount %c: (still in use?)\n", letter);
+        return -1;
+    }
+    printf("%c: dismounted\n", letter);
+    return 0;
+}
+#endif
+
 static void
 usage_sd(void)
 {
@@ -675,7 +780,9 @@ usage_sd(void)
                     "       cit --sd-put image [--to folder] file|folder...\n"
                     "       cit --sd-get image [--to folder] path...\n"
                     "       cit --sd-del image path...\n"
-                    "       cit --sd-mkdir image folder...\n");
+                    "       cit --sd-mkdir image folder...\n"
+                    "       cit --sd-mount image [X:]       (Windows, OSFMount)\n"
+                    "       cit --sd-unmount X:\n");
 }
 
 /* argv[1] is one of the --sd- commands */
@@ -688,6 +795,18 @@ sd_main(int argc, char **argv)
         return -1;
     }
     const char *image = argv[2];
+    if (strcmp(cmd, "--sd-mount") == 0 || strcmp(cmd, "--sd-unmount") == 0) {
+#ifdef _WIN32
+        if (cmd[5] == 'm') {
+            return argc <= 4 ? sd_mount(image, argc == 4 ? argv[3] : NULL) : (usage_sd(), -1);
+        }
+        return argc == 3 ? sd_unmount(image) : (usage_sd(), -1);
+#else
+        fprintf(stderr, "ERROR: %s is for Windows (OSFMount); on Linux: "
+                        "sudo mount -o loop image /mnt, or udisksctl loop-setup -f image\n", cmd);
+        return -1;
+#endif
+    }
     if (strcmp(cmd, "--sd-new") == 0) {
         if (argc < 4 || argc > 5) {
             usage_sd();
