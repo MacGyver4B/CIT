@@ -195,8 +195,19 @@ Layout:
 These only read the image (`--poke` changes it); without anything else to
 do, cit stops after them.
 
-* `--sums` - CRC32 and size of every file in directory order (REL: the
-  data), entries without blocks, links and broken chains marked
+* `--sums` - size and checksums of every file in directory order (REL:
+  the data), entries without blocks, links and broken chains marked; PRG
+  files with their load address. `cit --sums file...` takes any files, not
+  only images: PRGs, ROM dumps, images as a whole (an image also lists its
+  files). Every file gets all checksums:
+  * CRC32 (zip, MAME and ROM lists), MD5, SHA-1
+  * CRC-16/XMODEM (polynomial $1021) and CRC-16/ARC ($8005, ARC/LHA)
+  * xor - the 1 byte checksum of CBM tape blocks and disk data blocks
+  * cbm - the CBM ROM checksum: every byte added with the carry of the
+    addition before, the last carry added at the end. A CBM ROM chip gives
+    the high byte of its start address ($E0 for the C64 kernal, $C0 and $E0
+    for the two 1541 ROMs, $D0 $E0 $F0 for the 4040)
+  * sum - plain sum modulo 256
 * `--layout name` - the blocks of the matching files (wildcards as `-X`) in
   chain order; REL files with super side sector, side sectors and whether
   the index matches

@@ -23,7 +23,7 @@
 #define X00_HEADER_SIZE 26          /* "C64File" 0, name 16 + 0, REL record size */
 
 /* image type from the file size of a source image, -1 = unknown */
-static int
+int
 type_from_size(long size, bool *error_table)
 {
     static const struct {

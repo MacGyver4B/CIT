@@ -319,6 +319,20 @@ void load_config(const char *program, const char *explicit_path);
 
 /* tools.c: looking into images */
 unsigned long crc32_of(const unsigned char *data, int size);
+int type_from_size(long size, bool *error_table);
+/* all checksums of one file, see tools.c */
+typedef struct {
+    unsigned long crc32;
+    unsigned int crc16_xmodem;
+    unsigned int crc16_arc;
+    unsigned char xor8;         /* CBM tape and disk block checksum */
+    unsigned char cbm;          /* CBM ROM checksum: add with carry */
+    unsigned char sum8;         /* plain sum modulo 256 */
+    unsigned char md5[16];
+    unsigned char sha1[20];
+} file_sums;
+void sums_of(const unsigned char *data, long size, file_sums *s);
+int tool_sums_files(int count, char **paths);
 void tool_sums(image_type type, const unsigned char *image);
 void tool_layout(image_type type, const unsigned char *image, const char *pattern);
 bool tool_block(image_type type, const unsigned char *image, const char *arg);

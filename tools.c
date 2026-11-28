@@ -1,7 +1,7 @@
 /*
  * tools.c - looking into images (for tests and repairs)
  *
- *   --sums      CRC32 and size of every file, in directory order
+ *   --sums      checksums of every file in an image, or of any other file
  *
  * These only read the image; when nothing else is asked for, cit stops
  * after them without listing or writing the image.
@@ -25,6 +25,233 @@ crc32_of(const unsigned char *data, int size)
     return crc ^ 0xffffffffUL;
 }
 
+/* CRC-16/XMODEM (polynomial $1021, start 0), as XMODEM and many 8 bit tools */
+static unsigned int
+crc16_xmodem(const unsigned char *data, long size)
+{
+    unsigned int crc = 0;
+    for (long i = 0; i < size; i++) {
+        crc ^= (unsigned int)data[i] << 8;
+        for (int k = 0; k < 8; k++) {
+            crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+        }
+        crc &= 0xffff;
+    }
+    return crc;
+}
+
+/* CRC-16/ARC (polynomial $8005 reflected, start 0), as ARC and LHA */
+static unsigned int
+crc16_arc(const unsigned char *data, long size)
+{
+    unsigned int crc = 0;
+    for (long i = 0; i < size; i++) {
+        crc ^= data[i];
+        for (int k = 0; k < 8; k++) {
+            crc = (crc & 1) ? ((crc >> 1) ^ 0xa001) : (crc >> 1);
+        }
+    }
+    return crc;
+}
+
+/* MD5 (RFC 1321) */
+static uint32_t
+rol32(uint32_t x, int n)
+{
+    return (x << n) | (x >> (32 - n));
+}
+
+static void
+md5_of(const unsigned char *data, long size, unsigned char out[16])
+{
+    static const int r[64] = {
+        7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
+        5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9, 14, 20,
+        4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
+        6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21
+    };
+    static const uint32_t k[64] = {
+        0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
+        0xf57c0faf, 0x4787c62a, 0xa8304613, 0xfd469501,
+        0x698098d8, 0x8b44f7af, 0xffff5bb1, 0x895cd7be,
+        0x6b901122, 0xfd987193, 0xa679438e, 0x49b40821,
+        0xf61e2562, 0xc040b340, 0x265e5a51, 0xe9b6c7aa,
+        0xd62f105d, 0x02441453, 0xd8a1e681, 0xe7d3fbc8,
+        0x21e1cde6, 0xc33707d6, 0xf4d50d87, 0x455a14ed,
+        0xa9e3e905, 0xfcefa3f8, 0x676f02d9, 0x8d2a4c8a,
+        0xfffa3942, 0x8771f681, 0x6d9d6122, 0xfde5380c,
+        0xa4beea44, 0x4bdecfa9, 0xf6bb4b60, 0xbebfbc70,
+        0x289b7ec6, 0xeaa127fa, 0xd4ef3085, 0x04881d05,
+        0xd9d4d039, 0xe6db99e5, 0x1fa27cf8, 0xc4ac5665,
+        0xf4292244, 0x432aff97, 0xab9423a7, 0xfc93a039,
+        0x655b59c3, 0x8f0ccc92, 0xffeff47d, 0x85845dd1,
+        0x6fa87e4f, 0xfe2ce6e0, 0xa3014314, 0x4e0811a1,
+        0xf7537e82, 0xbd3af235, 0x2ad7d2bb, 0xeb86d391
+    };
+    uint32_t h[4] = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476 };
+    long blocks = (size + 8) / 64 + 1;
+    for (long b = 0; b < blocks; b++) {
+        unsigned char chunk[64];
+        for (int i = 0; i < 64; i++) {
+            long p = b * 64 + i;
+            if (p < size) {
+                chunk[i] = data[p];
+            } else if (p == size) {
+                chunk[i] = 0x80;
+            } else if (p >= blocks * 64 - 8) {
+                int byte = (int)(p - (blocks * 64 - 8));
+                chunk[i] = (unsigned char)(((uint64_t)size * 8) >> (8 * byte));
+            } else {
+                chunk[i] = 0;
+            }
+        }
+        uint32_t w[16];
+        for (int i = 0; i < 16; i++) {
+            w[i] = (uint32_t)chunk[4 * i] | ((uint32_t)chunk[4 * i + 1] << 8)
+                   | ((uint32_t)chunk[4 * i + 2] << 16) | ((uint32_t)chunk[4 * i + 3] << 24);
+        }
+        uint32_t a = h[0], bb = h[1], c = h[2], d = h[3];
+        for (int i = 0; i < 64; i++) {
+            uint32_t f;
+            int g;
+            if (i < 16) {
+                f = (bb & c) | (~bb & d);
+                g = i;
+            } else if (i < 32) {
+                f = (d & bb) | (~d & c);
+                g = (5 * i + 1) % 16;
+            } else if (i < 48) {
+                f = bb ^ c ^ d;
+                g = (3 * i + 5) % 16;
+            } else {
+                f = c ^ (bb | ~d);
+                g = (7 * i) % 16;
+            }
+            uint32_t t = d;
+            d = c;
+            c = bb;
+            bb = bb + rol32(a + f + k[i] + w[g], r[i]);
+            a = t;
+        }
+        h[0] += a;
+        h[1] += bb;
+        h[2] += c;
+        h[3] += d;
+    }
+    for (int i = 0; i < 16; i++) {
+        out[i] = (unsigned char)(h[i / 4] >> (8 * (i % 4)));
+    }
+}
+
+/* SHA-1 (FIPS 180) */
+static void
+sha1_of(const unsigned char *data, long size, unsigned char out[20])
+{
+    uint32_t h[5] = { 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0 };
+    long blocks = (size + 8) / 64 + 1;
+    for (long b = 0; b < blocks; b++) {
+        unsigned char chunk[64];
+        for (int i = 0; i < 64; i++) {
+            long p = b * 64 + i;
+            if (p < size) {
+                chunk[i] = data[p];
+            } else if (p == size) {
+                chunk[i] = 0x80;
+            } else if (p >= blocks * 64 - 8) {
+                int byte = 7 - (int)(p - (blocks * 64 - 8));
+                chunk[i] = (unsigned char)(((uint64_t)size * 8) >> (8 * byte));
+            } else {
+                chunk[i] = 0;
+            }
+        }
+        uint32_t w[80];
+        for (int i = 0; i < 16; i++) {
+            w[i] = ((uint32_t)chunk[4 * i] << 24) | ((uint32_t)chunk[4 * i + 1] << 16)
+                   | ((uint32_t)chunk[4 * i + 2] << 8) | (uint32_t)chunk[4 * i + 3];
+        }
+        for (int i = 16; i < 80; i++) {
+            w[i] = rol32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+        }
+        uint32_t a = h[0], bb = h[1], c = h[2], d = h[3], e = h[4];
+        for (int i = 0; i < 80; i++) {
+            uint32_t f, k;
+            if (i < 20) {
+                f = (bb & c) | (~bb & d);
+                k = 0x5a827999;
+            } else if (i < 40) {
+                f = bb ^ c ^ d;
+                k = 0x6ed9eba1;
+            } else if (i < 60) {
+                f = (bb & c) | (bb & d) | (c & d);
+                k = 0x8f1bbcdc;
+            } else {
+                f = bb ^ c ^ d;
+                k = 0xca62c1d6;
+            }
+            uint32_t t = rol32(a, 5) + f + e + k + w[i];
+            e = d;
+            d = c;
+            c = rol32(bb, 30);
+            bb = a;
+            a = t;
+        }
+        h[0] += a;
+        h[1] += bb;
+        h[2] += c;
+        h[3] += d;
+        h[4] += e;
+    }
+    for (int i = 0; i < 20; i++) {
+        out[i] = (unsigned char)(h[i / 4] >> (24 - 8 * (i % 4)));
+    }
+}
+
+/* all checksums of a file. cbm is the sum the CBM ROMs check: every byte
+   added with the carry of the addition before (ADC without CLC), the last
+   carry added at the end; a ROM of 2, 4 or 8 KB gives the high byte of
+   its start address ($E0 for a ROM at $E000) */
+void
+sums_of(const unsigned char *data, long size, file_sums *s)
+{
+    s->crc32 = crc32_of(data, (int)size);
+    s->crc16_xmodem = crc16_xmodem(data, size);
+    s->crc16_arc = crc16_arc(data, size);
+    unsigned int x = 0, a = 0, c = 0, sum = 0;
+    for (long i = 0; i < size; i++) {
+        x ^= data[i];
+        a += data[i] + c;
+        c = a >> 8;
+        a &= 0xff;
+        sum += data[i];
+    }
+    s->xor8 = (unsigned char)x;
+    s->cbm = (unsigned char)((a + c) & 0xff);
+    s->sum8 = (unsigned char)(sum & 0xff);
+    md5_of(data, size, s->md5);
+    sha1_of(data, size, s->sha1);
+}
+
+static void
+print_hex(const unsigned char *b, int n)
+{
+    for (int i = 0; i < n; i++) {
+        printf("%02x", b[i]);
+    }
+}
+
+/* the checksums, indented */
+static void
+print_sums(const char *indent, const file_sums *s)
+{
+    printf("%scrc32 %08lx  crc16/xmodem %04x  crc16/arc %04x  xor $%02x  cbm $%02x  sum $%02x\n",
+           indent, s->crc32, s->crc16_xmodem, s->crc16_arc, s->xor8, s->cbm, s->sum8);
+    printf("%smd5   ", indent);
+    print_hex(s->md5, 16);
+    printf("  sha1 ");
+    print_hex(s->sha1, 20);
+    printf("\n");
+}
+
 static const char *
 type_name(int filetype)
 {
@@ -43,15 +270,16 @@ print_name(const unsigned char *name)
     printf("%-18s", q);
 }
 
-/* --sums: number, name, type, blocks shown, bytes, CRC32 of the data
-   (REL: the data blocks, not the index); entries without blocks show "-",
-   entries that share the blocks of another one name it */
+/* --sums on an image: number, name, type, blocks shown, bytes and the
+   checksums of the data (REL: the data blocks, not the index); entries
+   without blocks show "-", entries that share the blocks of another one
+   name it */
 void
 tool_sums(image_type type, const unsigned char *image)
 {
     source_file *f;
     int n = read_source_files(type, image, &f, false);
-    printf("  #  name               type blocks    bytes  crc32\n");
+    printf("  #  name               type blocks    bytes\n");
     for (int i = 0; i < n; i++) {
         printf("%3d  ", i + 1);
         print_name(f[i].name);
@@ -59,24 +287,89 @@ tool_sums(image_type type, const unsigned char *image)
                (f[i].filetype & 0x40) ? '<' : ' ', f[i].shown_blocks);
         const source_file *d = (f[i].kind == ENTRY_LINK) ? &f[f[i].link] : &f[i];
         if (f[i].kind == ENTRY_DUMMY) {
-            printf(" %8s  %-8s  no blocks", "-", "-");
+            printf(" %8s  no blocks\n", "-");
         } else if (d->broken) {
-            printf(" %8s  %-8s  broken block chain", "-", "-");
+            printf(" %8s  broken block chain\n", "-");
         } else {
-            printf(" %8d  %08lx", d->size, crc32_of(d->data, d->size));
+            printf(" %8d", d->size);
             if (f[i].kind == ENTRY_LINK) {
                 printf("  same blocks as %d", f[i].link + 1);
             }
             if ((f[i].filetype & 7) == FILETYPEREL) {
                 printf("  record length %d", f[i].record_length);
+            } else if ((f[i].filetype & 7) == FILETYPEPRG && d->size >= 2) {
+                printf("  load $%04x", d->data[0] | (d->data[1] << 8));
             }
+            printf("\n");
+            file_sums s;
+            sums_of(d->data, d->size, &s);
+            print_sums("     ", &s);
         }
-        printf("\n");
     }
     for (int i = 0; i < n; i++) {
         free(f[i].data);
     }
     free(f);
+}
+
+/* true if the path ends in .d followed by two characters (d64, d81, ...) */
+static bool
+image_extension(const char *path)
+{
+    size_t l = strlen(path);
+    return l >= 4 && path[l - 4] == '.' && tolower((unsigned char)path[l - 3]) == 'd';
+}
+
+/* cit --sums file...: the checksums of every file; an image (extension .dxx
+   and a known size) also lists its files. Returns 0, or -1 if a file could
+   not be read */
+int
+tool_sums_files(int count, char **paths)
+{
+    int retval = 0;
+    for (int i = 0; i < count; i++) {
+        FILE *fp = fopen(paths[i], "rb");
+        if (fp == NULL) {
+            fprintf(stderr, "ERROR: Could not open %s\n", paths[i]);
+            retval = -1;
+            continue;
+        }
+        fseek(fp, 0, SEEK_END);
+        long size = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        unsigned char *data = malloc(size > 0 ? size : 1);
+        if (data == NULL || (size > 0 && fread(data, 1, size, fp) != (size_t)size)) {
+            fprintf(stderr, "ERROR: Could not read %s\n", paths[i]);
+            fclose(fp);
+            free(data);
+            retval = -1;
+            continue;
+        }
+        fclose(fp);
+        if (i > 0) {
+            printf("\n");
+        }
+        printf("%s  %ld bytes", paths[i], size);
+        size_t l = strlen(paths[i]);
+        if (size >= 2 && l >= 4 && strcasecmp(paths[i] + l - 4, ".prg") == 0) {
+            printf("  load $%04x", data[0] | (data[1] << 8));
+        }
+        bool error_table;
+        int t = image_extension(paths[i]) ? type_from_size(size, &error_table) : -1;
+        if (t >= 0) {
+            printf("  %s image%s", fmt((image_type)t)->name, error_table ? " with error table" : "");
+        }
+        printf("\n");
+        file_sums s;
+        sums_of(data, size, &s);
+        print_sums("  ", &s);
+        if (t >= 0) {
+            printf("\n");
+            tool_sums((image_type)t, data);
+        }
+        free(data);
+    }
+    return retval;
 }
 
 /* prints a list of blocks, 12 per line */
@@ -830,7 +1123,15 @@ tool_json(image_type type, const unsigned char *image)
         if (d->broken) {
             printf(", \"broken\": true");
         } else if (f[i].kind != ENTRY_DUMMY) {
-            printf(", \"bytes\": %d, \"crc32\": \"%08lx\"", d->size, crc32_of(d->data, d->size));
+            file_sums fs;
+            sums_of(d->data, d->size, &fs);
+            printf(", \"bytes\": %d, \"crc32\": \"%08lx\", \"crc16_xmodem\": \"%04x\", \"crc16_arc\": \"%04x\""
+                   ", \"xor\": \"%02x\", \"cbm\": \"%02x\", \"sum\": \"%02x\", \"md5\": \"",
+                   d->size, fs.crc32, fs.crc16_xmodem, fs.crc16_arc, fs.xor8, fs.cbm, fs.sum8);
+            print_hex(fs.md5, 16);
+            printf("\", \"sha1\": \"");
+            print_hex(fs.sha1, 20);
+            printf("\"");
             if ((f[i].filetype & 7) == FILETYPEREL) {
                 printf(", \"record_length\": %d", f[i].record_length);
             }

@@ -89,7 +89,10 @@ usage(void)
     printf("--diff other  Compare with another image: header, directory, file contents\n");
     printf("              and layout, BAM, used blocks (free blocks and the buffer rest\n");
     printf("              behind a file end are ignored). Exit code 1 if they differ.\n");
-    printf("--sums        List CRC32 and size of every file (REL: the data).\n");
+    printf("--sums        Checksums of every file (REL: the data): CRC32, CRC-16/XMODEM,\n");
+    printf("              CRC-16/ARC, XOR, CBM ROM sum, sum, MD5, SHA-1. \"cit --sums\n");
+    printf("              file...\" takes any files (PRG, ROM dumps); images also list\n");
+    printf("              their files.\n");
     printf("              The tools only read the image (--poke changes it); without\n");
     printf("              anything else to do, cit stops after them.\n");
     printf("--config file Settings file instead of cit.ini (next to the program, or\n");
@@ -1797,6 +1800,29 @@ main(int argc, char* argv[])
     image_type type = IMAGE_D64;
     char* imagepath = NULL;
     char* filename_g64 = NULL;
+
+    /* cit --sums file...: only checksums, of images or any other files */
+    if (argc >= 3) {
+        bool only_files = true;
+        int sums_at = -1;
+        for (int j = 1; j < argc; j++) {
+            if (strcmp(argv[j], "--sums") == 0 && sums_at < 0) {
+                sums_at = j;
+            } else if (argv[j][0] == '-') {
+                only_files = false;
+            }
+        }
+        if (sums_at > 0 && only_files) {
+            char *paths[MAXNUMFILES];
+            int n = 0;
+            for (int j = 1; j < argc && n < MAXNUMFILES; j++) {
+                if (j != sums_at) {
+                    paths[n++] = argv[j];
+                }
+            }
+            return tool_sums_files(n, paths);
+        }
+    }
     /* cit.ini first, so that the command line wins */
     const char *config_path = NULL;
     for (int k = 1; k + 1 < argc; k++) {
