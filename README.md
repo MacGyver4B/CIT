@@ -56,7 +56,8 @@ Empty images are byte identical to VICE and, apart from the $AA $55 the
 real DOS writes into free blocks, to its N command. `--alloc dos` follows
 DOS 3.0: the first block of every file alternately on track 77 and 75,
 then sector + 10 within a head, the other heads of the track before the
-next track; byte identical to files written by the real D9090 in VICE. REL
+next track; byte identical to files written by the real D9060 and D9090
+in VICE. REL
 files get a super side sector.
 
 ### Block allocation (`--alloc`) ###
