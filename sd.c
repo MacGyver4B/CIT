@@ -569,6 +569,10 @@ put_path(const char *local, const char *folder, int *count)
     }
     join(target, sizeof target, folder, name);
     if (!S_ISDIR(st.st_mode)) {
+        char shown[2048];
+        to_local_name(target, shown, sizeof shown);
+        printf("Copying %s -> %s\n", local, shown);
+        fflush(stdout);
         if (put_file(local, target) != 0) {
             return -1;
         }
@@ -645,6 +649,10 @@ get_path(const char *src, const char *folder, int *count)
         snprintf(target, sizeof target, "%s", folder);
     }
     if (!is_dir) {
+        char shown[2048];
+        to_local_name(src, shown, sizeof shown);
+        printf("Copying %s -> %s\n", shown, target);
+        fflush(stdout);
         FIL in;
         FRESULT r = f_open(&in, src, FA_READ);
         if (r != FR_OK) {
