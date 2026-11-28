@@ -816,7 +816,10 @@ usage_sd(void)
                     "       cit --sd-del image path...\n"
                     "       cit --sd-mkdir image folder...\n"
                     "       cit --sd-mount image [X:]       (Windows, OSFMount)\n"
-                    "       cit --sd-unmount X:\n");
+                    "       cit --sd-unmount X:\n"
+                    "       cit --sd-list\n"
+                    "       cit --sd-read  drive image\n"
+                    "       cit --sd-write image drive [--yes]\n");
 }
 
 /* argv[1] is one of the --sd- commands */
@@ -824,6 +827,9 @@ int
 sd_main(int argc, char **argv)
 {
     const char *cmd = argv[1];
+    if (strcmp(cmd, "--sd-list") == 0 || strcmp(cmd, "--sd-read") == 0 || strcmp(cmd, "--sd-write") == 0) {
+        return sdcard_main(argc, argv);
+    }
     if (argc < 3) {
         usage_sd();
         return -1;

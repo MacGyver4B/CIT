@@ -235,9 +235,6 @@ Layout:
 * PETSCII viewer and converter: screens with colour and cursor codes as
   ANSI/VT100 for the console, DOS ANSI (`.ans`) or HTML (one way only)
 * CSV and text as UTF-8 with graphic characters for REL as well
-* SD cards and USB sticks: reading a card into an image and writing an
-  image back (Windows and Linux, removable drives only, with a question
-  before writing and a check after it)
 
 ### Looking into images ###
 
@@ -299,6 +296,24 @@ New images have no partition table: the file system starts at sector 0,
 as on most USB sticks. FAT32 from 64 MB on, smaller ones FAT12/FAT16; sizes
 as `64M` or `2G`. Images with a partition table are read and changed too
 (the first partition). Names may be long and hold umlauts.
+
+Reading and writing the card itself:
+
+```
+cit --sd-list                      removable drives: number, size, name, letters
+cit --sd-read  E: card.img         the whole card into an image
+cit --sd-write card.img E:         the image onto the card, then compared
+```
+
+Only removable drives (USB, SD, MMC) up to 32 GB are offered, the drive
+the system runs from never. The drive can be given as `E:`, `1` or
+`PhysicalDrive1` (Windows) or `/dev/sdb` (Linux). Before writing cit
+shows the card and asks; `--yes` skips that for a frontend that asks
+itself. After writing the card is read back and compared. Progress goes
+to stdout, one line per percent (`Writing 1250/7600 MB (16%)`). Windows
+locks and dismounts the volumes of the card while cit works on it, which
+needs a command prompt "Run as administrator"; Linux needs root and
+refuses a mounted card for writing.
 
 Windows cannot mount such an image by itself (only CD images); OSFMount
 (PassMark, free) can, and cit calls it:

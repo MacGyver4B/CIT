@@ -295,6 +295,14 @@ sd_test() {
         "$CIT" --sd-put n64M.img --to /l src 2> err > /dev/null
         grep -q "is a link, skipped" err && ok || bad "--sd-put must skip links"
     fi
+    # cards: a file stands in for the removable drive
+    truncate -s 64M card.bin 2> /dev/null || dd if=/dev/zero of=card.bin bs=1048576 count=64 2> /dev/null
+    if echo no | CIT_TEST_DEVICE=card.bin "$CIT" --sd-write n32M.img test > /dev/null 2>&1; then bad "--sd-write must ask"; else ok; fi
+    CIT_TEST_DEVICE=card.bin "$CIT" --sd-write n64M.img test --yes > wr.log 2>&1 && grep -q "checked" wr.log && ok || { bad "--sd-write"; tail -3 wr.log; }
+    cmp -s n64M.img card.bin && ok || bad "--sd-write: card differs"
+    CIT_TEST_DEVICE=card.bin "$CIT" --sd-read test back.img > /dev/null 2>&1 && cmp -s back.img card.bin && ok || bad "--sd-read"
+    if CIT_TEST_DEVICE=card.bin "$CIT" --sd-write n2G.img test --yes > /dev/null 2>&1; then bad "an image larger than the card must be refused"; else ok; fi
+    if "$CIT" --sd-write n64M.img /dev/vda --yes > /dev/null 2>&1; then bad "a fixed disk must be refused"; else ok; fi
     cd .. && rm -rf sdt
 }
 sd_test
