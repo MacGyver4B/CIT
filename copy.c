@@ -29,7 +29,7 @@ type_from_size(long size, bool *error_table)
     static const struct {
         image_type type;
     } candidates[] = {
-        { IMAGE_D64 }, { IMAGE_D71 }, { IMAGE_D81 }, { IMAGE_D80 }, { IMAGE_D82 }
+        { IMAGE_D64 }, { IMAGE_D71 }, { IMAGE_D81 }, { IMAGE_D80 }, { IMAGE_D82 }, { IMAGE_D60 }, { IMAGE_D90 }
     };
     for (unsigned int i = 0; i < sizeof candidates / sizeof candidates[0]; i++) {
         image_type t = candidates[i].type;
@@ -149,7 +149,7 @@ escaped(char *s, const unsigned char *p, int len)
 void
 source_header(image_type type, const unsigned char *image, char *header, char *id)
 {
-    const unsigned char *h = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    const unsigned char *h = image + linear_sector(type, dirtrack(type), header_sector(type)) * BLOCKSIZE;
     escaped(header, h + fmt(type)->header_offset, FILENAMEMAXSIZE);
     escaped(id, h + fmt(type)->id_offset, 2);
 }
@@ -360,8 +360,8 @@ count_free_blocks(image_type type, const unsigned char *image)
 {
     int n = 0;
     for (unsigned int t = 1; t <= image_num_tracks(type); t++) {
-        if ((int)t == dirtrack(type)) {
-            continue;
+        if ((int)t == dirtrack(type) && !fmt(type)->heads) {
+            continue; /* the floppy DOS does not count it, DOS 3.0 does */
         }
         for (int s = 0; s < num_sectors(type, t); s++) {
             n += is_sector_free(type, image, t, s, 0, 0) ? 1 : 0;
@@ -390,7 +390,7 @@ write_directory_pet(image_type type, const unsigned char *image, const char *fol
     }
     /* "prg" etc. in PETSCII: the codes of the upper case ASCII letters */
     static const char *types[] = { "DEL", "SEQ", "PRG", "USR", "REL", "???", "???", "???" };
-    const unsigned char *h = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    const unsigned char *h = image + linear_sector(type, dirtrack(type), header_sector(type)) * BLOCKSIZE;
     /* header line: 0 "name" id, the name and id reversed like on the screen */
     fputs("0 \x12\"", f);
     fwrite(h + fmt(type)->header_offset, 1, FILENAMEMAXSIZE, f);

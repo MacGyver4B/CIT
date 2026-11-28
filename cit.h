@@ -198,7 +198,9 @@ typedef enum {
     IMAGE_D71,
     IMAGE_D81,
     IMAGE_D80,
-    IMAGE_D82
+    IMAGE_D82,
+    IMAGE_D60,                  /* D9060 hard disk (DOS 3.0), 4 heads */
+    IMAGE_D90                   /* D9090 hard disk (DOS 3.0), 6 heads */
 } image_type;
 
 
@@ -234,6 +236,12 @@ typedef struct {
         int sector;
     } bam_block[4];
     const char *default_id;     /* disk id incl. DOS version, hex escapes allowed */
+    /* hard disks (DOS 3.0): track 0 is part of the image (0/0 points to
+       directory, header and BAM, 0/1 lists the bad sectors); a sector number
+       is head * 32 + sector of the head, the BAM has an entry per head */
+    bool track0;
+    int heads;                  /* 0 = floppy */
+    int header_sector;          /* header on dir_track/header_sector */
 } format_t;
 
 /* cit.c: global settings */
@@ -322,8 +330,10 @@ bool dos_first_block(image_type type, const unsigned char *image, int *track, in
 bool dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment);
 bool is_system_block(image_type type, int track, int sector);
 bool swap_dir_entries(image_type type, unsigned char *image, const unsigned char *pname, int position);
-int get_bam_offset(image_type type, unsigned int track);
-int get_bam_count_offset(image_type type, unsigned int track);
+int bam_track_free(image_type type, const unsigned char *image, int track);
+int header_sector(image_type type);
+int hd_bam_blocks(image_type type);
+void hd_bam_block(image_type type, int i, int *track, int *sector, int *low, int *high);
 int linear_sector(image_type type, int track, int sector);
 int is_sector_free(image_type type, const unsigned char* image, int track, int sector, int numdirblocks, int dir_sector_interleave);
 void mark_sector(image_type type, unsigned char* image, int track, int sector, int free);

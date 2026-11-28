@@ -52,7 +52,7 @@ usage(void)
 {
     printf("\n*** This is CIT (Commodore Image Tools) version " VERSION " built on " __DATE__ " ***\n");
     printf("*** based on cc1541 4.2 by JackAsser, Krill, Claus and Bjoern Esser ***\n\n");
-    printf("Usage: cit [options] image.[d64|d71|d81|d80|d82]\n\n");
+    printf("Usage: cit [options] image.[d64|d71|d81|d80|d82|d90]\n\n");
     printf("Disk Related:\n");
     printf("============\n");
     printf("-n diskname   Disk name, default='cit'.\n");
@@ -61,6 +61,8 @@ usage(void)
     printf("              d40  D64 for 2031/4040 (no Transwarp, 35 tracks)\n");
     printf("              d41  D64 for the 1541 (also d64, default for .d64)\n");
     printf("              d71  1571, d81 1581, d80 8050, d82 8250/SFD-1001\n");
+    printf("              d60  D9060, d90 D9090 (hard disks, .d90 for both as in VICE;\n");
+    printf("                   an existing image tells by its size)\n");
     printf("--convert src Copy all files of an image or a folder; the source is only read.\n");
     printf("              image -> new image: laid out anew (also another format),\n");
     printf("                       disk name and id of the source unless -n/-i\n");
@@ -736,7 +738,9 @@ check_bam(image_type type, const unsigned char* image)
                 if (verbose) {
                     printf(".");
                 }
-                if (t != dirtrack(type)) {
+                /* the floppy DOS does not count the free blocks of the
+                   directory track, DOS 3.0 (hard disks) does */
+                if (t != dirtrack(type) || fmt(type)->heads) {
                     sectorsFree++;
                 } else {
                     sectorsFreeOnDirTrack++;
@@ -837,7 +841,7 @@ print_filetype(int filetype)
 static void
 print_directory(image_type type, unsigned char* image, int blocks_free)
 {
-    unsigned char* bam = image + linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    unsigned char* bam = image + linear_sector(type, dirtrack(type), header_sector(type)) * BLOCKSIZE;
     char *blockmap = calloc(image_num_blocks(type), sizeof(char));
     if(blockmap == NULL) {
         fprintf(stderr, "ERROR: Memory allocation error\n");
@@ -1612,7 +1616,7 @@ convert_to_commandline(image_type type, unsigned char* image)
         exit(-1);
     }
     printf("\nCommandline to create directory art: -n \"");
-    unsigned int bam = linear_sector(type, dirtrack(type), 0) * BLOCKSIZE;
+    unsigned int bam = linear_sector(type, dirtrack(type), header_sector(type)) * BLOCKSIZE;
     print_filename_with_escapes(image + bam + get_header_offset(type), FILENAMEMAXSIZE);
     printf("\" -i \"");
     print_filename_with_escapes(image + bam + get_id_offset(type), 5);
@@ -2169,6 +2173,10 @@ main(int argc, char* argv[])
                 format_choice = IMAGE_D80;
             } else if (strcasecmp(f, "d82") == 0) {
                 format_choice = IMAGE_D82;
+            } else if (strcasecmp(f, "d60") == 0) {
+                format_choice = IMAGE_D60;
+            } else if (strcasecmp(f, "d90") == 0) {
+                format_choice = IMAGE_D90;
             } else {
                 fprintf(stderr, "ERROR: Unknown image format %s for -D\n", f);
                 return -1;
@@ -2272,6 +2280,10 @@ main(int argc, char* argv[])
             t = IMAGE_D80;
         } else if (strcasecmp(ext, ".d82") == 0) {
             t = IMAGE_D82;
+        } else if (strcasecmp(ext, ".d90") == 0) {
+            t = IMAGE_D90;   /* VICE uses .d90 for both hard disks, see below */
+        } else if (strcasecmp(ext, ".d60") == 0) {
+            t = IMAGE_D60;
         }
         if (t >= 0) {
             if (extended) {
@@ -2279,6 +2291,21 @@ main(int argc, char* argv[])
                 return -1;
             }
             type = t;
+        }
+    }
+    /* D9060 or D9090: an existing image tells by its size */
+    if (type == IMAGE_D60 || type == IMAGE_D90) {
+        struct stat st;
+        if (stat(imagepath, &st) == 0) {
+            if ((long)st.st_size == (long)image_size(IMAGE_D60)) {
+                type = IMAGE_D60;
+            } else if ((long)st.st_size == (long)image_size(IMAGE_D90)) {
+                type = IMAGE_D90;
+            }
+        }
+        if (usedirtrack || shadowdirtrack) {
+            fprintf(stderr, "ERROR: -t and -d are not supported for hard disk images\n");
+            return -1;
         }
     }
     dir_sector_interleave = fmt(type)->dir_interleave;
@@ -2296,7 +2323,8 @@ main(int argc, char* argv[])
             const char *ext = (l >= 4) ? imagepath + l - 4 : "";
             bool image_ext = strcasecmp(ext, ".d64") == 0 || strcasecmp(ext, ".d71") == 0
                              || strcasecmp(ext, ".d81") == 0 || strcasecmp(ext, ".d80") == 0
-                             || strcasecmp(ext, ".d82") == 0;
+                             || strcasecmp(ext, ".d82") == 0 || strcasecmp(ext, ".d90") == 0
+                             || strcasecmp(ext, ".d60") == 0;
             bool slash = l > 0 && (imagepath[l - 1] == '/' || imagepath[l - 1] == '\\');
             target_folder = slash || (format_choice < 0 && !image_ext);
         }

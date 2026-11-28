@@ -39,7 +39,7 @@ dos_free_blocks(image_type type, const unsigned char *image, int track)
     if (track == dirtrack(type) || track == fmt(type)->second_bam_track) {
         return 0;
     }
-    return image[get_bam_count_offset(type, track)];
+    return bam_track_free(type, image, track);
 }
 
 /* first free sector from start upwards, then from 0 (GETSEC) */
@@ -59,9 +59,138 @@ dos_getsec(image_type type, const unsigned char *image, int track, int start)
     return -1;
 }
 
+/*
+ * DOS 3.0 (D9060/D9090, tstfnd and frets): a sector number is head * 32 +
+ * sector of the head, the BAM counts free blocks per head.
+ *   NXTDS: if the current head of the track has free blocks, FNDNXT on it;
+ *          else the next heads of the same track (in a circle); when all are
+ *          full, one track further away from the directory track (the sector
+ *          is kept; up from the directory track itself), at the edge the
+ *          other side next to the directory track with sector 0. After 3
+ *          passes the directory track is the last resort.
+ *   FNDNXT: sector + increment; from 32 on, 32 and (unless that gives 0)
+ *          1 more are subtracted; the next free sector of the head from
+ *          there, else from 0.
+ *   INTTS: the first block of every file alternately on directory track
+ *          + 1 and - 1 (INTFLG is flipped on each call), sector 0, head 0.
+ */
+static int
+dos3_head_free(image_type type, const unsigned char *image, int track, int head)
+{
+    int n = 0;
+    for (int s = 0; s < 32; s++) {
+        n += is_sector_free(type, image, track, head * 32 + s, 0, 0) ? 1 : 0;
+    }
+    return n;
+}
+
+/* GETSEC on one head: first free sector from start, else from 0; -1 = none */
+static int
+dos3_getsec(image_type type, const unsigned char *image, int track, int head, int start)
+{
+    for (int s = start; s < 32; s++) {
+        if (is_sector_free(type, image, track, head * 32 + s, 0, 0)) {
+            return head * 32 + s;
+        }
+    }
+    for (int s = 0; s < 32; s++) {
+        if (is_sector_free(type, image, track, head * 32 + s, 0, 0)) {
+            return head * 32 + s;
+        }
+    }
+    return -1;
+}
+
+static int
+dos3_fndnxt(image_type type, const unsigned char *image, int track, int head, int sector, int increment)
+{
+    sector += increment;
+    if (sector >= 32) {
+        sector -= 32;
+        if (sector != 0) {
+            sector--;
+        }
+    }
+    return dos3_getsec(type, image, track, head, sector);
+}
+
+static bool
+dos3_nxtds(image_type type, const unsigned char *image, int *track, int *sector, int increment)
+{
+    int dt = dirtrack(type);
+    int maxtrk = image_num_tracks(type) + 1;
+    int heads = fmt(type)->heads;
+    int t = *track;
+    int head = *sector >> 5;
+    int sec = *sector & 31;
+    int tmphed = head;
+    int passes = 3;
+    for (;;) {
+        if (dos3_head_free(type, image, t, head) > 0) {
+            *track = t;
+            *sector = dos3_fndnxt(type, image, t, head, sec, increment);
+            return *sector >= 0;
+        }
+        head = (head + 1) % heads;
+        if (head != tmphed) {
+            continue;
+        }
+        if (t >= dt) {
+            if (++t == maxtrk) {
+                t = dt - 1;
+                sec = 0;
+                if (--passes == 0) {
+                    break;
+                }
+            }
+        } else {
+            if (--t == 0) {
+                t = dt + 1;
+                sec = 0;
+                if (--passes == 0) {
+                    break;
+                }
+            }
+        }
+    }
+    /* NXTERR: the directory track */
+    for (head = 0; head < heads; head++) {
+        if (dos3_head_free(type, image, dt, head) > 0) {
+            *track = dt;
+            *sector = dos3_fndnxt(type, image, dt, head, sec, increment);
+            return *sector >= 0;
+        }
+    }
+    return false;
+}
+
+static int dos3_intflg = 0;
+
+/* the next free sector after sector on the same track, DOS 3.0 style
+   (heads in a circle), -1 if the track is full */
+int
+dos3_next_on_track(image_type type, const unsigned char *image, int track, int sector, int increment)
+{
+    int head = sector >> 5;
+    for (int i = 0; i < fmt(type)->heads; i++) {
+        int h = (head + i) % fmt(type)->heads;
+        if (dos3_head_free(type, image, track, h) > 0) {
+            return dos3_fndnxt(type, image, track, h, sector & 31, increment);
+        }
+    }
+    return -1;
+}
+
 bool
 dos_first_block(image_type type, const unsigned char *image, int *track, int *sector)
 {
+    if (fmt(type)->heads) {
+        dos3_intflg ^= 0xff;
+        *track = dirtrack(type) + (dos3_intflg ? 1 : -1);
+        *sector = 0;
+        return dos3_nxtds(type, image, track, sector, fmt(type)->file_interleave);
+    }
+
     int dt = dirtrack(type);
     for (int r = 1; ; r++) {
         int t = dt - r;
@@ -85,6 +214,9 @@ dos_first_block(image_type type, const unsigned char *image, int *track, int *se
 bool
 dos_next_block(image_type type, const unsigned char *image, int *track, int *sector, int increment)
 {
+    if (fmt(type)->heads) {
+        return dos3_nxtds(type, image, track, sector, increment);
+    }
     int dt = dirtrack(type);
     int t = *track;
     int s = *sector;
@@ -132,6 +264,9 @@ dos_next_block(image_type type, const unsigned char *image, int *track, int *sec
 static int
 next_sector_on(image_type type, const unsigned char *image, int track, int s)
 {
+    if (fmt(type)->heads) {
+        return dos3_next_on_track(type, image, track, s, fmt(type)->file_interleave);
+    }
     s += fmt(type)->file_interleave;
     int n = num_sectors(type, track);
     if (s > n) {

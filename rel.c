@@ -35,7 +35,7 @@
 bool
 rel_has_super_side_sector(image_type type)
 {
-    return type == IMAGE_D82 || type == IMAGE_D81;
+    return type == IMAGE_D82 || type == IMAGE_D81 || type == IMAGE_D60 || type == IMAGE_D90;
 }
 
 static bool
